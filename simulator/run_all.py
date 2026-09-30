@@ -12,6 +12,12 @@ from __future__ import annotations
 
 import sys
 import time
+from pathlib import Path
+
+# Ensure project root is in sys.path
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 from simulator.build_city import build_city_network
 from simulator.generate_traffic import generate_traffic_events
