@@ -9,6 +9,8 @@ data/raw/*
 !data/raw/README.md
 data/networks/*
 !data/networks/.gitkeep
+data/sim/*
+!data/sim/README.md
 data/simulated/*
 !data/simulated/.gitkeep
 *.csv
@@ -18,6 +20,8 @@ data/simulated/*
 *.tar.gz
 *.avi
 *.mp4
+*.graphml
+cache/
 
 # Python bytecode & cache
 __pycache__/
