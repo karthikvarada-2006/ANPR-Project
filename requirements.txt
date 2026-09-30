@@ -1,0 +1,16 @@
+numpy
+pandas
+geopandas
+osmnx
+networkx
+shapely
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+geoalchemy2
+pydantic
+python-dotenv
+tqdm
+matplotlib
+pytest
