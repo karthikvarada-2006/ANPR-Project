@@ -5,11 +5,19 @@ venv/
 ENV/
 
 # Data and Artifacts (large binaries, raw video, simulation caches)
-data/*
-!data/README.md
+data/raw/*
+!data/raw/README.md
+data/networks/*
+!data/networks/.gitkeep
+data/simulated/*
+!data/simulated/.gitkeep
 *.csv
 *.parquet
 *.sqlite3
+*.zip
+*.tar.gz
+*.avi
+*.mp4
 
 # Python bytecode & cache
 __pycache__/

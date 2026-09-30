@@ -25,6 +25,7 @@ PACKAGES_TO_CHECK = [
     ("tqdm", "tqdm"),
     ("matplotlib", "matplotlib"),
     ("pytest", "pytest"),
+    ("kaggle", "kaggle"),
 ]
 
 def main() -> int:
