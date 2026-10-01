@@ -93,3 +93,28 @@ class Alert(Base):
 
     def __repr__(self) -> str:
         return f"<Alert {self.id}: [{self.alert_type}] {self.plate} ({self.timestamp})>"
+
+
+class Trajectory(Base):
+    """Reconstructed cross-camera vehicle journey path."""
+
+    __tablename__ = "trajectories"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    plate = Column(String(20), nullable=False, index=True)
+    start_time = Column(DateTime, nullable=False, index=True)
+    end_time = Column(DateTime, nullable=False)
+    duration_seconds = Column(Float, nullable=False)
+    total_distance_meters = Column(Float, nullable=False)
+    avg_speed_kmh = Column(Float, nullable=False)
+    num_sightings = Column(Integer, nullable=False)
+    camera_sequence = Column(JSON, nullable=False)
+    geom = Column(Geometry("LINESTRING", srid=4326), nullable=True)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_trajectories_plate_start", "plate", "start_time"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<Trajectory {self.id}: {self.plate} ({self.num_sightings} cameras, {self.avg_speed_kmh:.1f} km/h)>"
