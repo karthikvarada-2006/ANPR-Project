@@ -93,6 +93,7 @@ def add_anpr_noise() -> pd.DataFrame:
 
         noisy_records.append(
             {
+                "event_id": row.get("event_id"),
                 "plate": observed_plate,
                 "camera_id": row["camera_id"],
                 "timestamp": row["timestamp"],

@@ -83,7 +83,8 @@ class Alert(Base):
     __tablename__ = "alerts"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    alert_type = Column(String(50), nullable=False, index=True)  # 'BLACKLIST', 'ROUTE_ANOMALY', etc.
+    alert_type = Column(String(50), nullable=False, index=True)  # 'BLACKLIST', 'CLONED_PLATE', etc.
+    severity = Column(String(20), nullable=False, default="LOW", index=True)  # 'HIGH', 'MEDIUM', 'LOW'
     plate = Column(String(20), nullable=False, index=True)
     camera_id = Column(String(50), nullable=True)
     timestamp = Column(DateTime, nullable=False)
@@ -91,7 +92,7 @@ class Alert(Base):
     created_at = Column(DateTime, default=func.now(), nullable=False)
 
     def __repr__(self) -> str:
-        return f"<Alert {self.id}: [{self.alert_type}] {self.plate} ({self.timestamp})>"
+        return f"<Alert {self.id}: [{self.severity}][{self.alert_type}] {self.plate} ({self.timestamp})>"
 
 
 class Trajectory(Base):
@@ -117,3 +118,78 @@ class Trajectory(Base):
 
     def __repr__(self) -> str:
         return f"<Trajectory {self.id}: {self.plate} ({self.num_sightings} cameras, {self.avg_speed_kmh:.1f} km/h)>"
+
+
+class CameraWindowStat(Base):
+    """Aggregated camera observations per time window."""
+
+    __tablename__ = "camera_window_stats"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    camera_id = Column(String(50), nullable=False, index=True)
+    window_start = Column(DateTime, nullable=False, index=True)
+    window_end = Column(DateTime, nullable=False)
+    vehicle_count = Column(Integer, nullable=False)
+    unique_plates = Column(Integer, nullable=False)
+    avg_speed_kmh = Column(Float, nullable=False)
+    p85_speed_kmh = Column(Float, nullable=False)
+    density_score = Column(Float, nullable=False)
+
+    __table_args__ = (
+        Index("ix_cws_camera_window", "camera_id", "window_start"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<CameraWindowStat {self.camera_id} @ {self.window_start}: {self.vehicle_count} vehicles>"
+
+
+class Congestion(Base):
+    """Identified urban congestion bottlenecks and hotspot windows."""
+
+    __tablename__ = "congestion"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    camera_id = Column(String(50), nullable=False, index=True)
+    window_start = Column(DateTime, nullable=False, index=True)
+    window_end = Column(DateTime, nullable=False)
+    avg_speed_kmh = Column(Float, nullable=False)
+    free_flow_speed_kmh = Column(Float, nullable=False)
+    vehicle_count = Column(Integer, nullable=False)
+    median_count = Column(Float, nullable=False)
+    severity = Column(Float, nullable=False)
+    duration_minutes = Column(Integer, nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<Congestion {self.camera_id} @ {self.window_start}: severity={self.severity:.2f}>"
+
+
+class ODMatrix(Base):
+    """Zone-to-zone Origin-Destination vehicle trip counts."""
+
+    __tablename__ = "od_matrix"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    origin_zone = Column(String(100), nullable=False, index=True)
+    dest_zone = Column(String(100), nullable=False, index=True)
+    trip_count = Column(Integer, nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<ODMatrix {self.origin_zone} -> {self.dest_zone}: {self.trip_count}>"
+
+
+class RouteDensity(Base):
+    """Aggregated vehicle traversal counts along road segments per window."""
+
+    __tablename__ = "route_density"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    window_start = Column(DateTime, nullable=False, index=True)
+    segment_id = Column(String(100), nullable=False, index=True)
+    u_lat = Column(Float, nullable=False)
+    u_lon = Column(Float, nullable=False)
+    v_lat = Column(Float, nullable=False)
+    v_lon = Column(Float, nullable=False)
+    vehicle_count = Column(Integer, nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<RouteDensity {self.segment_id} @ {self.window_start}: {self.vehicle_count} vehicles>"

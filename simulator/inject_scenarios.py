@@ -25,6 +25,7 @@ from simulator.config import (
     BLACKLIST_PATH,
     CAMERAS_PATH,
     EVENTS_PATH,
+    GROUND_TRUTH_PATH,
     RANDOM_SEED,
     SIM_DATE,
 )
@@ -39,11 +40,11 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
-def create_blacklist(events_df: pd.DataFrame, rnd: random.Random) -> pd.DataFrame:
-    """Choose 10 active vehicle plates to include in the security blacklist."""
-    unique_plates = events_df["plate"].dropna().unique().tolist()
+def create_blacklist(gt_df: pd.DataFrame, rnd: random.Random) -> pd.DataFrame:
+    """Choose 10 active vehicle plates from TRUE ground truth plates to include in the security blacklist."""
+    unique_plates = gt_df["plate"].dropna().unique().tolist()
     if len(unique_plates) < 10:
-        raise ValueError("Not enough plates in events to generate 10 blacklist entries.")
+        raise ValueError("Not enough plates in ground truth to generate 10 blacklist entries.")
 
     selected_plates = rnd.sample(unique_plates, 10)
 
@@ -76,12 +77,12 @@ def create_blacklist(events_df: pd.DataFrame, rnd: random.Random) -> pd.DataFram
 
     blacklist_df = pd.DataFrame(records)
     blacklist_df.to_csv(BLACKLIST_PATH, index=False)
-    print(f"Created security blacklist with {len(blacklist_df)} plates -> {BLACKLIST_PATH}")
+    print(f"Created security blacklist with {len(blacklist_df)} TRUE plates -> {BLACKLIST_PATH}")
     return blacklist_df
 
 
 def inject_cloned_plates(
-    events_df: pd.DataFrame, cameras_df: pd.DataFrame, rnd: random.Random
+    events_df: pd.DataFrame, gt_df: pd.DataFrame, cameras_df: pd.DataFrame, rnd: random.Random
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Inject 5 cloned plate anomalies with impossible travel speeds."""
     # Find camera pairs that are far apart (> 3500 meters)
@@ -105,8 +106,8 @@ def inject_cloned_plates(
         c1, c2 = cam_ids[0], cam_ids[-1]
         far_pairs.append((c1, c2, 3000.0))
 
-    # Pick 5 candidate plates
-    existing_plates = events_df["plate"].dropna().unique().tolist()
+    # Pick 5 candidate plates from TRUE ground truth plates
+    existing_plates = gt_df["plate"].dropna().unique().tolist()
     cloned_plates = rnd.sample(existing_plates, 5)
 
     anomalies = []
@@ -153,6 +154,7 @@ def inject_cloned_plates(
         # Create the two observation records for events.csv
         new_event_rows.append(
             {
+                "event_id": None,
                 "plate": plate,
                 "camera_id": c1,
                 "timestamp": t1.strftime("%Y-%m-%d %H:%M:%S"),
@@ -164,6 +166,7 @@ def inject_cloned_plates(
         )
         new_event_rows.append(
             {
+                "event_id": None,
                 "plate": plate,
                 "camera_id": c2,
                 "timestamp": t2.strftime("%Y-%m-%d %H:%M:%S"),
@@ -192,15 +195,18 @@ def inject_scenarios() -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Run all scenario injections (blacklist + cloned plate anomalies)."""
     if not EVENTS_PATH.exists():
         raise FileNotFoundError(f"{EVENTS_PATH} does not exist. Run add_noise.py first.")
+    if not GROUND_TRUTH_PATH.exists():
+        raise FileNotFoundError(f"{GROUND_TRUTH_PATH} does not exist. Run generate_traffic.py first.")
     if not CAMERAS_PATH.exists():
         raise FileNotFoundError(f"{CAMERAS_PATH} does not exist. Run build_city.py first.")
 
     rnd = random.Random(RANDOM_SEED)
     events_df = pd.read_csv(EVENTS_PATH)
+    gt_df = pd.read_csv(GROUND_TRUTH_PATH)
     cameras_df = pd.read_csv(CAMERAS_PATH)
 
-    blacklist_df = create_blacklist(events_df, rnd)
-    _, anomalies_df = inject_cloned_plates(events_df, cameras_df, rnd)
+    blacklist_df = create_blacklist(gt_df, rnd)
+    _, anomalies_df = inject_cloned_plates(events_df, gt_df, cameras_df, rnd)
 
     return blacklist_df, anomalies_df
 

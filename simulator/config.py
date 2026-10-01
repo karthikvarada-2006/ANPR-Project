@@ -79,3 +79,13 @@ PEAK_HOURS = {
     "evening": {"start": 17, "end": 20, "congestion_factor": 1.85},
 }
 OFF_PEAK_CONGESTION_FACTOR = 1.05
+
+# ==============================================================================
+# Surveillance & Alert Rules Settings
+# ==============================================================================
+WRONG_WAY_ENABLED = False            # Disabled by default; junction cameras see all directions, needs one-way ground truth
+RESTRICTED_CAMERAS = ["CAM_001", "CAM_002", "CAM_003"]
+RESTRICTED_TIME_WINDOW = ("22:00", "06:00")
+RESTRICTED_VEHICLE_TYPES = ["truck"]
+
+

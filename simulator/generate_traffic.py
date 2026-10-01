@@ -104,7 +104,7 @@ def get_congestion_factor(dt: datetime.datetime) -> float:
         return OFF_PEAK_CONGESTION_FACTOR
 
 
-def generate_traffic_events(force_regenerate: bool = False) -> pd.DataFrame:
+def generate_traffic_events(force_regenerate: bool = True) -> pd.DataFrame:
     """Simulate vehicle fleet trips and extract true ANPR camera passages."""
     if GROUND_TRUTH_PATH.exists() and not force_regenerate:
         print(f"Loading existing ground truth events from {GROUND_TRUTH_PATH} ...")
@@ -169,8 +169,22 @@ def generate_traffic_events(force_regenerate: bool = False) -> pd.DataFrame:
 
         # 1 to 3 trips per vehicle per day
         num_trips = rnd.choices([1, 2, 3], weights=[0.40, 0.45, 0.15], k=1)[0]
+        last_arrival_time: Optional[datetime.datetime] = None
 
         for _ in range(num_trips):
+            # Departure time:
+            # - First trip: sample departure time from daily distribution
+            # - Next trip: departs only after previous trip ended + random dwell of 15-90 minutes
+            if last_arrival_time is None:
+                current_time = sample_departure_time(rnd)
+            else:
+                dwell_minutes = rnd.uniform(15.0, 90.0)
+                current_time = last_arrival_time + datetime.timedelta(minutes=dwell_minutes)
+
+            # Drop trips that would not fit in the day
+            if current_time.date() > SIM_DATE:
+                break
+
             hub = rnd.choice(hubs)
             available_dests = list(hub_paths[hub].keys())
             if len(available_dests) < 5:
@@ -183,9 +197,10 @@ def generate_traffic_events(force_regenerate: bool = False) -> pd.DataFrame:
             if len(path) < 6:
                 continue
 
-            # Departure time
-            current_time = sample_departure_time(rnd)
             congestion = get_congestion_factor(current_time)
+
+            trip_events = []
+            trip_fits = True
 
             # Traverse the path and advance time
             for i in range(len(path) - 1):
@@ -206,6 +221,10 @@ def generate_traffic_events(force_regenerate: bool = False) -> pd.DataFrame:
                 speed_mps = (effective_speed * 1000.0) / 3600.0
                 step_duration_sec = length_m / speed_mps if speed_mps > 0 else 2.0
 
+                if current_time.date() > SIM_DATE:
+                    trip_fits = False
+                    break
+
                 # Check if current node 'u' has an ANPR camera
                 if u in camera_nodes:
                     cam_id = camera_map[u]
@@ -218,7 +237,7 @@ def generate_traffic_events(force_regenerate: bool = False) -> pd.DataFrame:
                     # Lane assignment (1: inner, 2: center, 3: outer)
                     lane = rnd.choice([1, 2, 3])
 
-                    all_events.append(
+                    trip_events.append(
                         {
                             "plate": plate,
                             "camera_id": cam_id,
@@ -233,10 +252,18 @@ def generate_traffic_events(force_regenerate: bool = False) -> pd.DataFrame:
                 # Advance clock
                 current_time += datetime.timedelta(seconds=step_duration_sec)
 
-    # 5. Format and save
+            if trip_fits and current_time.date() == SIM_DATE:
+                all_events.extend(trip_events)
+                last_arrival_time = current_time
+            else:
+                # Trip extended past midnight, drop it and stop further trips for today
+                break
+
+    # 5. Format and save with unique event_id
     events_df = pd.DataFrame(all_events)
     # Sort chronologically
     events_df = events_df.sort_values(by="timestamp").reset_index(drop=True)
+    events_df.insert(0, "event_id", range(1, len(events_df) + 1))
 
     events_df.to_csv(GROUND_TRUTH_PATH, index=False)
     print(f"\nGenerated {len(events_df):,} ground-truth ANPR events.")
