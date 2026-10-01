@@ -16,7 +16,6 @@ from typing import Dict, List, Optional, Tuple
 import networkx as nx
 import osmnx as ox
 import pandas as pd
-from geoalchemy2.elements import WKTElement
 from shapely.geometry import LineString, mapping
 from tqdm import tqdm
 
@@ -271,7 +270,6 @@ class TrajectoryReconstructor:
         saved = 0
         try:
             for t in trajectories:
-                wkt_str = t["line_geom"].wkt
                 traj_orm = Trajectory(
                     plate=t["plate"],
                     start_time=t["start_time"],
@@ -281,12 +279,12 @@ class TrajectoryReconstructor:
                     avg_speed_kmh=t["avg_speed_kmh"],
                     num_sightings=t["num_sightings"],
                     camera_sequence=t["camera_sequence"],
-                    geom=WKTElement(wkt_str, srid=4326),
+                    coordinates=t["coordinates"],
                 )
                 session.add(traj_orm)
                 saved += 1
             session.commit()
-            print(f"Persisted {saved} trajectories to PostGIS 'trajectories' table.")
+            print(f"Persisted {saved} trajectories to 'trajectories' table.")
         except Exception as exc:
             session.rollback()
             print(f"[NOTE] Database persistence skipped or failed: {exc}")

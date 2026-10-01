@@ -12,7 +12,7 @@ from sqlalchemy import desc, func
 from sqlalchemy.exc import OperationalError
 
 from backend.db import SessionLocal, engine
-from backend.models import Alert, Blacklist, Camera, Event
+from backend.models import Alert, Blacklist, Camera, Event, Trajectory
 
 
 def check_database() -> bool:
@@ -30,11 +30,13 @@ def check_database() -> bool:
         event_count = session.query(func.count(Event.id)).scalar()
         bl_count = session.query(func.count(Blacklist.plate)).scalar()
         alert_count = session.query(func.count(Alert.id)).scalar()
+        traj_count = session.query(func.count(Trajectory.id)).scalar()
 
-        print(f"  cameras:    {cam_count:>10,d} rows")
-        print(f"  events:     {event_count:>10,d} rows")
-        print(f"  blacklist:  {bl_count:>10,d} rows")
-        print(f"  alerts:     {alert_count:>10,d} rows")
+        print(f"  cameras:       {cam_count:>10,d} rows")
+        print(f"  events:        {event_count:>10,d} rows")
+        print(f"  blacklist:     {bl_count:>10,d} rows")
+        print(f"  alerts:        {alert_count:>10,d} rows")
+        print(f"  trajectories:  {traj_count:>10,d} rows")
 
         if cam_count == 0 or event_count == 0:
             print("\n[NOTE] Tables are currently empty. Run data loading script:")

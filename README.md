@@ -49,7 +49,7 @@ city-anpr/
 | **Module 1: City Road Simulator** | `simulator/` | Fetches real OpenStreetMap street graphs and generates realistic multi-vehicle traffic with timestamped ANPR sightings. | OSMnx, NetworkX, GeoPandas |
 | **Module 2: Plate Detection & OCR** | `ocr/` | Detects vehicle license plates in camera frames, crops bounding boxes, corrects perspective, and extracts plate characters. | YOLO, EasyOCR / Tesseract, OpenCV |
 | **Module 3: Single-Camera Tracking & Voting** | `tracking/` | Assigns persistent tracking IDs across video frames and aggregates multi-frame OCR predictions using confidence-weighted voting. | ByteTrack / DeepSORT, Pandas |
-| **Module 4: Spatial Database Layer** | `backend/database/` | High-performance spatial database schemas for camera nodes, plate sightings, vehicle metadata, and trajectories. | PostgreSQL, PostGIS, SQLAlchemy, GeoAlchemy2 |
+| **Module 4: Database Layer** | `backend/` | High-performance database schemas for camera nodes, plate sightings, vehicle metadata, and trajectories. | SQLite (default) / PostgreSQL, SQLAlchemy |
 | **Module 5: Trajectory Reconstruction** | `backend/trajectory/` | Reconnects sparse sightings from disjoint cameras into topologically valid vehicle paths using shortest-path graph algorithms. | NetworkX, Shapely, GeoPandas |
 | **Module 6: Urban Traffic Analytics** | `backend/analytics/` | Computes average link speeds, segment density, level-of-service (LOS), congestion bottlenecks, and Origin-Destination (OD) matrices. | NumPy, Pandas, SciPy |
 | **Module 7: Alerts & Anomaly Engine** | `backend/alerts/` | Evaluates real-time events against watchlists (stolen/wanted vehicles), speed limit thresholds, and irregular travel patterns. | Python, Pydantic, WebSockets |
@@ -64,7 +64,7 @@ city-anpr/
 - **Python 3.11**
 - **Git**
 - **Node.js** (v18+ for frontend dashboard)
-- **PostgreSQL 14+ with PostGIS** (for production database storage)
+- *(Database runs out-of-the-box on SQLite with zero setup; Docker/PostgreSQL is optional)*
 
 ### 2. Environment Setup (PowerShell on Windows)
 
@@ -72,14 +72,16 @@ city-anpr/
 # 1. Activate the virtual environment
 .\.venv\Scripts\Activate.ps1
 
-# 2. Upgrade pip to the latest version
-python -m pip install --upgrade pip
+# 2. Run simulation pipeline (Module 1)
+python -m simulator.run_all
 
-# 3. Install core dependencies
-pip install -r requirements.txt
+# 3. Initialize database tables & load data (Module 4)
+python backend/init_db.py
+python backend/load_data.py
+python backend/check_db.py
 
-# 4. Verify installation
-python check_setup.py
+# 4. Run automated test suite
+pytest -v
 ```
 
 ### 3. Configuration

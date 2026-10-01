@@ -1,4 +1,4 @@
-"""SQLAlchemy & GeoAlchemy2 ORM Data Models for ANPR System."""
+"""SQLAlchemy ORM Data Models for ANPR System (SQLite & PostgreSQL Compatible)."""
 
 import datetime
 from sqlalchemy import (
@@ -11,10 +11,10 @@ from sqlalchemy import (
     Integer,
     JSON,
     String,
+    Text,
     func,
 )
 from sqlalchemy.orm import relationship
-from geoalchemy2 import Geometry
 
 from backend.db import Base
 
@@ -28,14 +28,13 @@ class Camera(Base):
     name = Column(String(255), nullable=False)
     lat = Column(Float, nullable=False)
     lon = Column(Float, nullable=False)
-    geom = Column(Geometry("POINT", srid=4326), nullable=True)
     node_id = Column(BigInteger, nullable=True)
 
     # Relationships
     events = relationship("Event", back_populates="camera", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
-        return f"<Camera {self.camera_id}: {self.name}>"
+        return f"<Camera {self.camera_id}: {self.name} ({self.lat:.4f}, {self.lon:.4f})>"
 
 
 class Event(Base):
@@ -109,7 +108,7 @@ class Trajectory(Base):
     avg_speed_kmh = Column(Float, nullable=False)
     num_sightings = Column(Integer, nullable=False)
     camera_sequence = Column(JSON, nullable=False)
-    geom = Column(Geometry("LINESTRING", srid=4326), nullable=True)
+    coordinates = Column(JSON, nullable=True)  # List of [lon, lat] pairs
     created_at = Column(DateTime, default=func.now(), nullable=False)
 
     __table_args__ = (

@@ -10,14 +10,13 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from geoalchemy2.elements import WKTElement
 import pandas as pd
 from sqlalchemy import delete, insert
 from sqlalchemy.exc import OperationalError
 from tqdm import tqdm
 
 from backend.db import SessionLocal, engine
-from backend.models import Alert, Blacklist, Camera, Event
+from backend.models import Alert, Blacklist, Camera, Event, Trajectory
 
 # Simulator data paths
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -32,6 +31,7 @@ BATCH_SIZE = 5000
 def clear_tables(session) -> None:
     """Clear all tables in foreign-key safe order."""
     print("Clearing existing table records (safe re-run)...")
+    session.execute(delete(Trajectory))
     session.execute(delete(Alert))
     session.execute(delete(Event))
     session.execute(delete(Blacklist))
@@ -41,7 +41,7 @@ def clear_tables(session) -> None:
 
 
 def load_cameras(session) -> int:
-    """Load cameras from cameras.csv into PostgreSQL with PostGIS Point geometries."""
+    """Load cameras from cameras.csv into database with lat/lon coordinates."""
     print(f"\nLoading cameras from {CAMERAS_CSV.name}...")
     df = pd.read_csv(CAMERAS_CSV)
 
@@ -49,8 +49,6 @@ def load_cameras(session) -> int:
     for _, row in df.iterrows():
         lat = float(row["lat"])
         lon = float(row["lon"])
-        # WKT format: POINT(lon lat) with WGS84 SRID 4326
-        geom_wkt = WKTElement(f"POINT({lon} {lat})", srid=4326)
 
         camera_records.append(
             {
@@ -58,14 +56,13 @@ def load_cameras(session) -> int:
                 "name": str(row["name"]),
                 "lat": lat,
                 "lon": lon,
-                "geom": geom_wkt,
                 "node_id": int(row["node_id"]),
             }
         )
 
     session.execute(insert(Camera), camera_records)
     session.commit()
-    print(f"  [OK] Inserted {len(camera_records)} cameras with spatial geometries.")
+    print(f"  [OK] Inserted {len(camera_records)} cameras.")
     return len(camera_records)
 
 

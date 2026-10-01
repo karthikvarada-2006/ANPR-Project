@@ -12,21 +12,34 @@ from sqlalchemy.orm import declarative_base, sessionmaker, Session
 ROOT_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT_DIR / ".env")
 
-# Primary connection string
+# Primary connection string (defaults to SQLite for zero-setup local development)
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+psycopg2://postgres:postgres@localhost:5432/city_anpr",
+    "sqlite:///data/city_anpr.db",
 )
 
-# Automatically normalize 'postgresql://' to 'postgresql+psycopg2://'
-if DATABASE_URL.startswith("postgresql://"):
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
+connect_args = {}
+engine_kwargs = {"echo": False}
 
-# Create database engine with connection liveness testing
+if DATABASE_URL.startswith("sqlite"):
+    # If SQLite path is relative, resolve relative to project root
+    if DATABASE_URL.startswith("sqlite:///") and not DATABASE_URL.startswith("sqlite:////"):
+        rel_path = DATABASE_URL.replace("sqlite:///", "")
+        abs_db_path = (ROOT_DIR / rel_path).resolve()
+        abs_db_path.parent.mkdir(parents=True, exist_ok=True)
+        DATABASE_URL = f"sqlite:///{abs_db_path.as_posix()}"
+    connect_args["check_same_thread"] = False
+else:
+    # Normalize postgresql:// to postgresql+psycopg2://
+    if DATABASE_URL.startswith("postgresql://"):
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
+    engine_kwargs["pool_pre_ping"] = True
+
+# Create database engine
 engine = create_engine(
     DATABASE_URL,
-    pool_pre_ping=True,
-    echo=False,
+    connect_args=connect_args,
+    **engine_kwargs,
 )
 
 # Session factory for local transactions

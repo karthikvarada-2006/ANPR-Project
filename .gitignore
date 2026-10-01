@@ -16,6 +16,7 @@ data/simulated/*
 *.csv
 *.parquet
 *.sqlite3
+*.db
 *.zip
 *.tar.gz
 *.avi
