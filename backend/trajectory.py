@@ -236,6 +236,7 @@ def get_trajectory(
     end: Optional[Union[str, datetime.datetime]] = None,
     fuzzy: bool = True,
     db: Optional[Session] = None,
+    source: Optional[str] = "sim",
 ) -> Dict[str, Any]:
     """Retrieve and reconstruct the trajectory of a vehicle across all cameras.
 
@@ -245,6 +246,7 @@ def get_trajectory(
         end: Optional end timestamp filter.
         fuzzy: If True, search visually confusable plate variants (O/0, B/8, etc.).
         db: Optional database session scope.
+        source: Optional source filter ('sim', 'video', 'image', or None for all). Default is 'sim'.
 
     Returns:
         Dictionary containing trips, points, route geometry, distance, duration,
@@ -271,7 +273,7 @@ def get_trajectory(
         # 1. Gather candidate plate variants
         matched_plates: List[str] = []
         if fuzzy:
-            similar = find_similar_plates(norm_plate, max_distance=1.0, db=db)
+            similar = find_similar_plates(norm_plate, max_distance=1.0, db=db, source=source)
             matched_plates = [m.plate for m in similar]
             if norm_plate not in matched_plates:
                 matched_plates.insert(0, norm_plate)
@@ -283,6 +285,8 @@ def get_trajectory(
             db.query(Event)
             .filter(Event.plate.in_(matched_plates))
         )
+        if source is not None:
+            query = query.filter(Event.source == source)
 
         if start is not None:
             if isinstance(start, str):

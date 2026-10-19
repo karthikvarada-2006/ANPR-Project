@@ -114,6 +114,7 @@ def load_events(session) -> int:
                         "heading_degrees": float(row["heading_degrees"]) if pd.notnull(row["heading_degrees"]) else None,
                         "lane": int(row["lane"]) if pd.notnull(row["lane"]) else None,
                         "ocr_confidence": float(row["ocr_confidence"]) if pd.notnull(row["ocr_confidence"]) else None,
+                        "source": "sim",
                     }
                 )
 

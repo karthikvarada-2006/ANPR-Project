@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>City ANPR — Real-Time Surveillance & Traffic Command Dashboard</title>
+  
+  <!-- Modern Typography from Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Top Application Header -->
+  <header class="app-header">
+    <div class="header-brand">
+      <div class="brand-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
+          <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+          <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
+          <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
+          <line x1="8" y1="12" x2="8.01" y2="12"></line>
+          <line x1="16" y1="12" x2="16.01" y2="12"></line>
+        </svg>
+      </div>
+      <div>
+        <h1 class="brand-title">CITY ANPR <span class="brand-badge">LIVE INTELLIGENCE</span></h1>
+        <p class="brand-subtitle">Urban Surveillance & Automated License Plate Recognition System</p>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs" role="tablist">
+      <button class="nav-tab active" data-tab="overview" id="tab-btn-overview">
+        <span class="tab-icon">📊</span> Overview
+      </button>
+      <button class="nav-tab" data-tab="trajectory" id="tab-btn-trajectory">
+        <span class="tab-icon">🗺️</span> Trajectory Search
+      </button>
+      <button class="nav-tab" data-tab="heatmap" id="tab-btn-heatmap">
+        <span class="tab-icon">🔥</span> Traffic Heatmap
+      </button>
+      <button class="nav-tab" data-tab="alerts" id="tab-btn-alerts">
+        <span class="tab-icon">🚨</span> Live Alerts <span class="badge-pill" id="nav-alert-counter">0</span>
+      </button>
+      <button class="nav-tab" data-tab="blacklist" id="tab-btn-blacklist">
+        <span class="tab-icon">🛡️</span> Blacklist
+      </button>
+      <button class="nav-tab" data-tab="plate-reader" id="tab-btn-plate-reader">
+        <span class="tab-icon">🔍</span> Plate Reader
+      </button>
+    </nav>
+
+    <!-- Global System Status Badge -->
+    <div class="system-status" id="system-status-indicator">
+      <span class="status-dot online"></span>
+      <span class="status-text" id="system-status-text">System Active</span>
+    </div>
+  </header>
+
+  <!-- Global Alert/Toast Notifications Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Main Content Area with 5 Switchable Tab Panels -->
+  <main class="app-main">
+
+    <!-- =================================================================== -->
+    <!-- TAB 1: OVERVIEW -->
+    <!-- =================================================================== -->
+    <section class="tab-pane active" id="tab-overview">
+      <!-- KPI Metric Cards Grid -->
+      <div class="kpi-grid">
+        <div class="kpi-card card-cyan">
+          <div class="kpi-icon">🚗</div>
+          <div class="kpi-content">
+            <span class="kpi-label">TOTAL DETECTIONS</span>
+            <h2 class="kpi-value" id="kpi-events">--</h2>
+            <span class="kpi-sub">Sensor camera sighting events</span>
+          </div>
+        </div>
+
+        <div class="kpi-card card-emerald">
+          <div class="kpi-icon">🏷️</div>
+          <div class="kpi-content">
+            <span class="kpi-label">UNIQUE VEHICLES</span>
+            <h2 class="kpi-value" id="kpi-vehicles">--</h2>
+            <span class="kpi-sub">Distinct active fleet</span>
+            <span class="kpi-note text-cyan font-bold" style="font-size: 0.72rem; display: block; margin-top: 2px;">after OCR-error merging</span>
+          </div>
+        </div>
+
+        <div class="kpi-card card-purple">
+          <div class="kpi-icon">⚡</div>
+          <div class="kpi-content">
+            <span class="kpi-label">AVERAGE CITY SPEED</span>
+            <h2 class="kpi-value" id="kpi-speed">-- <span class="unit">km/h</span></h2>
+            <span class="kpi-sub" id="kpi-speed-sub">Across 40 surveillance corridors</span>
+          </div>
+        </div>
+
+        <div class="kpi-card card-rose" id="kpi-card-alerts">
+          <div class="kpi-icon" id="kpi-alerts-icon">🚨</div>
+          <div class="kpi-content">
+            <span class="kpi-label" id="kpi-alerts-label">ACTIVE SECURITY ALERTS</span>
+            <h2 class="kpi-value" id="kpi-alerts">--</h2>
+            <span class="kpi-sub" id="kpi-alerts-sub">Blacklist hits & cloned anomalies</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Overview Layout: Flow Chart + Top Congested Table + Small Camera Map -->
+      <div class="overview-grid">
+        <!-- 24-Hour City Flow Trend Chart -->
+        <div class="card card-flow-chart">
+          <div class="card-header">
+            <div class="card-title-group">
+              <h3 class="card-title">City Traffic Flow & Speed Trends</h3>
+              <p class="card-subtitle">Aggregated 15-minute volume and speed profiles across 24 hours</p>
+            </div>
+            <div class="chart-legend-custom">
+              <span class="legend-chip"><span class="legend-color cyan"></span> Vehicles / 15 min</span>
+              <span class="legend-chip"><span class="legend-color amber"></span> Avg Speed (km/h)</span>
+            </div>
+          </div>
+          <div class="chart-wrapper">
+            <canvas id="overview-flow-chart"></canvas>
+          </div>
+        </div>
+
+        <!-- Right Side: Small Map and Congestion Table -->
+        <div class="overview-sidebar-col">
+          <!-- Small Camera Map -->
+          <div class="card card-camera-map">
+            <div class="card-header">
+              <h3 class="card-title">Camera Network Coverage (40 Nodes)</h3>
+              <span class="badge-outline" id="overview-cam-count">40 Active</span>
+            </div>
+            <div id="overview-map" class="map-container-small"></div>
+          </div>
+
+          <!-- Top 5 Congested Corridors Table -->
+          <div class="card card-congestion-table">
+            <div class="card-header">
+              <h3 class="card-title">Top Congested Intersections</h3>
+              <span class="badge-outline text-amber">Speed Deficit</span>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table" id="top-congested-table">
+                <thead>
+                  <tr>
+                    <th>Camera</th>
+                    <th>Avg Speed</th>
+                    <th>Free Flow</th>
+                    <th>Severity</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td colspan="4" class="text-center text-muted">Loading congestion data...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- TAB 2: TRAJECTORY SEARCH -->
+    <!-- =================================================================== -->
+    <section class="tab-pane" id="tab-trajectory">
+      <!-- Search & Control Header -->
+      <div class="trajectory-search-bar card">
+        <div class="search-form-row">
+          <div class="search-input-wrapper">
+            <span class="search-icon">🔍</span>
+            <input 
+              type="text" 
+              id="traj-search-input" 
+              class="search-input" 
+              placeholder="Search registration plate (e.g. DL03NV2244, KA53AE1276, DL05VW4401)..." 
+              autocomplete="off"
+            >
+            <!-- Autocomplete suggestions dropdown -->
+            <div class="autocomplete-dropdown hidden" id="autocomplete-list"></div>
+          </div>
+
+          <label class="toggle-control" title="Fuzzy search tolerates visual OCR confusions (O/0, B/8, etc.)">
+            <input type="checkbox" id="traj-fuzzy-toggle" checked>
+            <span class="toggle-slider"></span>
+            <span class="toggle-label">Fuzzy OCR Match</span>
+          </label>
+
+          <button class="btn btn-primary" id="traj-search-btn">
+            <span>Reconstruct Trajectory</span>
+          </button>
+        </div>
+
+        <!-- Quick Sample Plate Chips for Beginner Testing -->
+        <div class="sample-plates-row" id="sample-plates-container">
+          <span class="sample-label">Try sample vehicles:</span>
+          <button class="chip-btn" data-plate="DL03NV2244">DL03NV2244 <span class="chip-tag tag-red">Cloned Anomaly</span></button>
+          <button class="chip-btn" data-plate="KA53AE1276">KA53AE1276 <span class="chip-tag tag-red">Cloned Anomaly</span></button>
+          <button class="chip-btn" data-plate="DL05VW4401">DL05VW4401 <span class="chip-tag tag-blue">Long Journey</span></button>
+          <button class="chip-btn" data-plate="KA50QA9345">KA50QA9345 <span class="chip-tag tag-amber">Blacklist Target</span></button>
+          <button class="chip-btn" data-plate="TN11YD7305">TN11YD7305 <span class="chip-tag tag-cyan">Normal Car</span></button>
+        </div>
+      </div>
+
+      <!-- Not Found Alert Banner -->
+      <div class="alert-banner hidden" id="traj-not-found-banner">
+        <div class="alert-banner-icon">⚠️</div>
+        <div class="alert-banner-text" id="traj-not-found-msg">Vehicle plate not found. Please try another search.</div>
+      </div>
+
+      <!-- Trajectory Layout: Interactive Map + Trips Side Panel -->
+      <div class="trajectory-layout">
+        <!-- Main Map with Animated Playback Controls -->
+        <div class="card traj-map-card">
+          <div class="map-overlay-header">
+            <div class="badge-group" id="traj-active-plate-badge">
+              <span class="plate-badge-lg" id="traj-display-plate">NO VEHICLE SELECTED</span>
+              <span class="badge-outline" id="traj-trips-summary">0 trips</span>
+            </div>
+            <!-- Playback speed selector -->
+            <div class="playback-controls-mini">
+              <span class="control-label">Speed:</span>
+              <select id="traj-playback-speed" class="select-sm">
+                <option value="1">1x</option>
+                <option value="2" selected>2x</option>
+                <option value="4">4x</option>
+                <option value="8">8x</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="trajectory-map" class="map-container-tall"></div>
+
+          <!-- Bottom Playback Timeline Slider -->
+          <div class="playback-bar card-glass">
+            <button class="btn-icon" id="traj-play-btn" title="Play journey animation">
+              <span id="play-icon">▶</span>
+            </button>
+            <div class="slider-wrapper">
+              <input type="range" id="traj-time-slider" min="0" max="100" value="0" step="1" class="playback-slider">
+              <div class="slider-labels">
+                <span id="slider-start-label">Start</span>
+                <span id="slider-current-label" class="slider-current">--</span>
+                <span id="slider-end-label">End</span>
+              </div>
+            </div>
+            <button class="btn-icon" id="traj-fit-btn" title="Fit map to journey path">⛶</button>
+          </div>
+        </div>
+
+        <!-- Side Panel: Trip Summary and Sightings Timeline -->
+        <aside class="card traj-sidebar">
+          <div class="card-header">
+            <h3 class="card-title">Journey Profile</h3>
+            <span class="badge-pill" id="traj-sightings-count">0 sightings</span>
+          </div>
+
+          <!-- Quick Stats Cards -->
+          <div class="traj-stat-strip">
+            <div class="mini-stat">
+              <span class="mini-label">TOTAL DISTANCE</span>
+              <span class="mini-val" id="traj-total-dist">-- km</span>
+              <span class="mini-sub">Across all trips</span>
+            </div>
+            <div class="mini-stat">
+              <span class="mini-label">TOTAL DURATION</span>
+              <span class="mini-val" id="traj-total-dur">-- min</span>
+              <span class="mini-sub">Across all trips</span>
+            </div>
+            <div class="mini-stat">
+              <span class="mini-label">AVG SPEED</span>
+              <span class="mini-val" id="traj-avg-speed">-- km/h</span>
+              <span class="mini-sub">Overall journey</span>
+            </div>
+          </div>
+
+          <!-- Vehicle Trips Breakdown List -->
+          <div class="trips-container" id="traj-trips-section">
+            <h4 class="timeline-header">Individual Trips (<span id="traj-trips-count">0</span>)</h4>
+            <div class="trips-list" id="traj-trips-list">
+              <div class="empty-state-text">No trips loaded.</div>
+            </div>
+          </div>
+
+          <!-- Flagged Hop Warning Box (if impossible hop detected) -->
+          <div class="flagged-hops-box hidden" id="traj-flagged-box">
+            <div class="flagged-hops-title">🚨 CLONED PLATE / IMPOSSIBLE HOP FLAGGED</div>
+            <div id="traj-flagged-list" class="flagged-hops-content"></div>
+          </div>
+
+          <!-- Timeline of Camera Passes -->
+          <div class="timeline-container">
+            <h4 class="timeline-header">Chronological Camera Sightings</h4>
+            <div class="timeline-list" id="traj-timeline-list">
+              <div class="empty-state-text">Search for a vehicle plate above to view its trajectory timeline.</div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- TAB 3: TRAFFIC HEATMAP -->
+    <!-- =================================================================== -->
+    <section class="tab-pane" id="tab-heatmap">
+      <!-- Heatmap Control Bar -->
+      <div class="heatmap-controls-bar card">
+        <div class="time-window-selector">
+          <label for="heatmap-window-select" class="selector-label">⏰ Select 15-Minute Window:</label>
+          <select id="heatmap-window-select" class="select-md">
+            <option value="">Full Day Peak Window (Busiest)</option>
+          </select>
+        </div>
+
+        <div class="heatmap-slider-group">
+          <button class="btn btn-secondary btn-sm" id="heatmap-prev-btn">◀ Previous</button>
+          <input type="range" id="heatmap-slider" min="0" max="71" value="0" class="playback-slider">
+          <button class="btn btn-secondary btn-sm" id="heatmap-next-btn">Next ▶</button>
+          <span class="window-badge" id="heatmap-window-display">Whole Day Peak</span>
+        </div>
+
+        <button class="btn btn-primary btn-sm" id="heatmap-refresh-btn">🔄 Refresh Heatmap</button>
+      </div>
+
+      <!-- Heatmap Map Container with Legend Overlay -->
+      <div class="card heatmap-map-card">
+        <div id="traffic-heatmap-map" class="map-container-tall"></div>
+
+        <!-- Floating Legend -->
+        <div class="heatmap-legend card-glass">
+          <h4 class="legend-title">Congestion Intensity</h4>
+          <div class="legend-gradient-bar"></div>
+          <div class="legend-labels">
+            <span>Low (Free Flow)</span>
+            <span>Moderate</span>
+            <span>High (Bottleneck)</span>
+          </div>
+          <div class="legend-cameras-note">
+            <span class="legend-dot green"></span> Free-Flow &nbsp;
+            <span class="legend-dot amber"></span> Moderate &nbsp;
+            <span class="legend-dot red"></span> Congested Camera
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Split: OD Matrix Table & Busiest Segments -->
+      <div class="heatmap-split-grid">
+        <!-- OD Matrix Pivot Table -->
+        <div class="card card-od-matrix">
+          <div class="card-header">
+            <div class="card-title-group">
+              <h3 class="card-title">Zone-to-Zone Origin-Destination Matrix</h3>
+              <p class="card-subtitle">Vehicle journeys between city zones clustered by camera coordinates</p>
+            </div>
+            <span class="badge-outline" id="od-total-trips-badge">-- total trips</span>
+          </div>
+          <div class="table-responsive od-table-wrapper">
+            <table class="od-table" id="od-matrix-table">
+              <thead>
+                <tr><th>Origin \ Destination</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Loading Origin-Destination flows...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Busiest Road Segments Table -->
+        <div class="card card-busiest-segments">
+          <div class="card-header">
+            <h3 class="card-title">Busiest Road Segments</h3>
+            <span class="badge-outline text-cyan">Vehicle Traversal Load</span>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table" id="busiest-segments-table">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Segment (From &rarr; To)</th>
+                  <th>Traversals</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="3" class="text-center text-muted">Loading route densities...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- TAB 4: LIVE ALERTS -->
+    <!-- =================================================================== -->
+    <section class="tab-pane" id="tab-alerts">
+      <!-- Live Stream Controls Bar -->
+      <div class="live-controls-bar card">
+        <div class="live-actions-group">
+          <button class="btn btn-success" id="ws-start-btn">
+            <span class="btn-icon-symbol">▶</span> Start Replay Stream
+          </button>
+          <button class="btn btn-danger" id="ws-stop-btn" disabled>
+            <span class="btn-icon-symbol">⏹</span> Stop Stream
+          </button>
+
+          <div class="speed-control-group">
+            <label for="ws-speed-select">Replay Speed:</label>
+            <select id="ws-speed-select" class="select-md">
+              <option value="10">10x Speed</option>
+              <option value="50">50x Speed</option>
+              <option value="100">100x Speed</option>
+              <option value="200" selected>200x Speed (Recommended)</option>
+              <option value="500">500x Fast</option>
+              <option value="0">Max Speed (No Sleep)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Stream Status & Simulated Clock -->
+        <div class="live-clock-badge">
+          <div class="sim-clock-label">SIMULATED CLOCK</div>
+          <div class="sim-clock-time" id="live-sim-clock">--:--:--</div>
+        </div>
+      </div>
+
+      <!-- Live Stream Progress Bar -->
+      <div class="card progress-card">
+        <div class="progress-info-row">
+          <span class="progress-status-text" id="ws-status-text">Disconnected. Click "Start Replay Stream" to begin.</span>
+          <span class="progress-numbers" id="ws-progress-numbers">0 / 31,244 events (0%)</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" id="ws-progress-fill" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- Alert Counters Strip -->
+      <div class="alert-counters-grid">
+        <div class="counter-card counter-total">
+          <span class="counter-label">TOTAL ALERTS</span>
+          <span class="counter-val" id="alert-cnt-total">0</span>
+        </div>
+        <div class="counter-card counter-blacklist">
+          <span class="counter-label">BLACKLIST HITS</span>
+          <span class="counter-val" id="alert-cnt-blacklist">0</span>
+        </div>
+        <div class="counter-card counter-cloned">
+          <span class="counter-label">CLONED PLATES</span>
+          <span class="counter-val" id="alert-cnt-cloned">0</span>
+        </div>
+        <div class="counter-card counter-curfew">
+          <span class="counter-label">RESTRICTED ZONE</span>
+          <span class="counter-val" id="alert-cnt-curfew">0</span>
+        </div>
+        <div class="counter-card counter-speed">
+          <span class="counter-label">OVERSPEEDING</span>
+          <span class="counter-val" id="alert-cnt-speed">0</span>
+        </div>
+      </div>
+
+      <!-- Split Layout: Live Alert Feed & Camera Geo-Locator Map -->
+      <div class="alerts-layout">
+        <!-- Live Alert Feed List with Filters -->
+        <div class="card alerts-feed-card">
+          <div class="card-header">
+            <h3 class="card-title">Real-Time Surveillance Incident Feed</h3>
+            <!-- Filters -->
+            <div class="filter-group">
+              <select id="alert-filter-severity" class="select-sm">
+                <option value="ALL">All Severities</option>
+                <option value="HIGH">HIGH Severity</option>
+                <option value="MEDIUM">MEDIUM Severity</option>
+                <option value="LOW">LOW Severity</option>
+              </select>
+
+              <select id="alert-filter-type" class="select-sm">
+                <option value="ALL">All Rule Types</option>
+                <option value="BLACKLIST">BLACKLIST</option>
+                <option value="CLONED_PLATE">CLONED_PLATE</option>
+                <option value="RESTRICTED_ZONE">RESTRICTED_ZONE</option>
+                <option value="OVERSPEED">OVERSPEED</option>
+                <option value="LOITERING">LOITERING</option>
+                <option value="WRONG_WAY">WRONG_WAY</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="alerts-feed-list" id="alerts-feed-container">
+            <div class="empty-feed-placeholder">
+              <span>📡</span>
+              <p>Replay stream is idle. Click "Start Replay Stream" above to stream live surveillance events.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Camera Incident Radar Map -->
+        <div class="card alerts-map-card">
+          <div class="card-header">
+            <h3 class="card-title">Incident Camera Radar</h3>
+            <span class="badge-outline" id="selected-alert-cam-label">Click an alert to locate camera</span>
+          </div>
+          <div id="alerts-radar-map" class="map-container-tall"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- TAB 5: BLACKLIST -->
+    <!-- =================================================================== -->
+    <section class="tab-pane" id="tab-blacklist">
+      <!-- Add Blacklist Target Form Card -->
+      <div class="card blacklist-add-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h3 class="card-title">Add Vehicle to Security Blacklist</h3>
+            <p class="card-subtitle">Flag stolen vehicles, court impound warrants, or felony surveillance targets</p>
+          </div>
+        </div>
+
+        <form id="add-blacklist-form" class="blacklist-form">
+          <div class="form-group">
+            <label for="bl-plate-input">License Plate Number:</label>
+            <input 
+              type="text" 
+              id="bl-plate-input" 
+              class="form-control" 
+              placeholder="e.g. KA50QA9345" 
+              required
+              maxlength="15"
+            >
+          </div>
+
+          <div class="form-group flex-2">
+            <label for="bl-reason-input">Watchlist Flag Reason:</label>
+            <input 
+              type="text" 
+              id="bl-reason-input" 
+              class="form-control" 
+              placeholder="e.g. Reported stolen luxury sedan (FIR #BLR-2026-902)" 
+              required
+            >
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" id="bl-submit-btn">
+              <span>+ Add to Watchlist</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Blacklist Registry Table Card -->
+      <div class="card blacklist-table-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h3 class="card-title">Active Security Blacklist Targets</h3>
+            <p class="card-subtitle">High-priority vehicles flagged across city-wide ANPR cameras</p>
+          </div>
+          <div class="header-tools">
+            <span class="badge-pill" id="bl-active-count">0 Targets</span>
+            <button class="btn btn-secondary btn-sm" id="bl-refresh-btn">🔄 Refresh List</button>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="data-table" id="blacklist-table">
+            <thead>
+              <tr>
+                <th>Target Plate</th>
+                <th>Surveillance Reason</th>
+                <th>Date Added</th>
+                <th>Status</th>
+                <th class="text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="blacklist-table-body">
+              <tr><td colspan="5" class="text-center text-muted">Loading active blacklist targets...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- TAB 6: PLATE READER -->
+    <!-- =================================================================== -->
+    <section class="tab-pane" id="tab-plate-reader">
+      
+      <!-- Top Grid: Upload & Controls + Live Inference Results -->
+      <div class="plate-reader-grid">
+        
+        <!-- Card 1: Image Upload & Preset Selector -->
+        <div class="panel-card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">📷 Single-Image Plate Reader & Detector</h2>
+              <p class="card-subtitle">In-memory YOLOv8 plate localization + fine-tuned fast-plate-ocr recognition</p>
+            </div>
+            <span class="badge-pill">Zero Disk Storage</span>
+          </div>
+
+          <!-- Drag and Drop Upload Area -->
+          <div class="upload-dropzone" id="pr-dropzone">
+            <input type="file" id="pr-file-input" accept=".jpg,.jpeg,.png" style="display: none;" />
+            <div class="dropzone-content">
+              <span class="dropzone-icon">📤</span>
+              <p class="dropzone-prompt"><strong>Drag & drop a vehicle photo</strong> or <button type="button" class="btn btn-secondary btn-sm" id="pr-browse-btn">Browse File</button></p>
+              <p class="dropzone-sub">Supported formats: JPG, PNG (Max 10 MB)</p>
+            </div>
+          </div>
+
+          <div class="sample-preset-container">
+            <label class="input-label" for="pr-sample-select">Or Pick a Test Sample Photo (Held-Out Test Split):</label>
+            <div class="sample-preset-row">
+              <select class="input-control" id="pr-sample-select">
+                <option value="">-- Choose from 10 sample test images --</option>
+              </select>
+              <button class="btn btn-primary" id="pr-read-btn" disabled>
+                <span>🔍</span> Read Plate
+              </button>
+            </div>
+          </div>
+
+          <!-- Status / Error Notification Banner -->
+          <div id="pr-status-banner" class="status-banner" style="display: none;"></div>
+        </div>
+
+        <!-- Card 2: Annotated Image & Plate Detection Results -->
+        <div class="panel-card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">🎯 Detection & Recognition Results</h2>
+              <p class="card-subtitle">Bounding boxes, character confidences, and blacklist alerts</p>
+            </div>
+            <span class="badge-pill" id="pr-results-badge">0 Plates Detected</span>
+          </div>
+
+          <div class="pr-preview-area" id="pr-preview-area">
+            <div class="pr-empty-state" id="pr-empty-state">
+              <span style="font-size: 2.8rem; margin-bottom: 0.5rem; display: block;">🖼️</span>
+              <p>Upload a vehicle image or select a sample above to run AI plate recognition.</p>
+            </div>
+            <img id="pr-annotated-img" class="pr-annotated-image" style="display: none;" alt="Annotated Vehicle" />
+          </div>
+
+          <!-- Detected Plates Table -->
+          <div class="table-responsive" style="margin-top: 1.25rem;">
+            <table class="data-table" id="pr-detected-table">
+              <thead>
+                <tr>
+                  <th>License Plate</th>
+                  <th>Detector Conf</th>
+                  <th>OCR Conf</th>
+                  <th>Blacklist Status</th>
+                  <th>Known Sightings</th>
+                  <th class="text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody id="pr-detected-tbody">
+                <tr><td colspan="6" class="text-center text-muted">No plate detection results yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Bottom Card: Video Pipeline Events Table -->
+      <div class="panel-card" style="margin-top: 1.5rem;">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title" id="pr-video-events-title">📹 Video ANPR Events</h2>
+            <p class="card-subtitle">Real-time and batch-processed camera video detections with consensus voting</p>
+          </div>
+          <div class="header-tools">
+            <input type="text" class="input-control input-sm" id="pr-video-filter-plate" placeholder="Filter plate..." style="width: 140px;" />
+            <input type="text" class="input-control input-sm" id="pr-video-filter-cam" placeholder="Filter camera..." style="width: 120px;" />
+            <button class="btn btn-secondary btn-sm" id="pr-video-refresh-btn">🔄 Refresh Events</button>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="data-table" id="pr-video-events-table">
+            <thead>
+              <tr>
+                <th>Crop Thumbnail</th>
+                <th>Voted Plate</th>
+                <th>Camera ID</th>
+                <th>Timestamp</th>
+                <th>Frames Used</th>
+                <th>Vote Margin</th>
+                <th>OCR Conf</th>
+                <th class="text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody id="pr-video-events-tbody">
+              <tr><td colspan="8" class="text-center text-muted">Loading video ANPR events...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- External CDN Libraries -->
+  <!-- 1. Leaflet Core Map JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <!-- 2. Leaflet Heat Plugin -->
+  <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+  <!-- 3. Chart.js for Beautiful Analytics Visualizations -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <!-- Core Dashboard Application Script -->
+  <script src="app.js"></script>
+</body>
+</html>

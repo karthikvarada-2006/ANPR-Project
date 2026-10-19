@@ -92,6 +92,25 @@ cp .env.example .env
 
 ---
 
+## 📹 Video ANPR Pipeline & Multi-Frame Consensus
+
+The `pipeline/` directory provides single-camera video tracking and multi-frame plate voting:
+
+1. **`pipeline/video_pipeline.py`**: Ingests video streams or directories of frames, detects plates with YOLOv8, tracks them across frames with Ultralytics ByteTrack (`persist=True`), gathers multi-frame readings with 5% padding, and emits aggregated events.
+2. **`pipeline/voting.py`**: Performs multi-frame consensus voting:
+   - Discards low-confidence readings below threshold.
+   - Executes character-position weighted voting to correct transient single-frame OCR misreads (e.g. `B` vs `8`).
+   - Falls back to confidence-summed string voting if sequence lengths vary.
+   - Emits finalized events matching `data/sim/events.csv` structure (`plate`, `camera_id`, `timestamp`, `lane`, `ocr_confidence`, `track_id`, `n_frames`, `vote_margin`, `best_crop_path`).
+   - **Note on Speed & Heading**: Vehicle speed (`speed_kmh`) and heading (`heading_degrees`) cannot be accurately measured from a single camera feed without camera intrinsic/extrinsic calibration and ground-plane homography. They are deliberately left empty in emitted video events.
+3. **`pipeline/make_synthetic_clips.py`**: Generates 24-frame synthetic video clips (1280x720) simulating vehicle approach (smooth zoom from 60% to 100%, random pan, motion blur, gaussian noise, brightness changes, and JPEG compression) using strictly photos from the TEST split of `indian-number-plates-dataset` (verified via `data/processed/split_groups.json`). Clips are saved to `data/video_events/synthetic/` with filename prefix `synthetic_` and a corresponding `ground_truth.csv`.
+4. **`pipeline/evaluate_voting.py`**: Benchmarks per-frame vs voted consensus accuracy, reporting real `video_images` sequences and synthetic clips as two separate tables (`docs/ocr/voting_results.csv`, `docs/ocr/voting_summary.md`).
+   > [!CAUTION]
+   > **Synthetic Clips Notice**: These clips are synthetic and all frames of one clip come from a single photo, so voting gains on them are optimistic and must not be reported as real-world results.
+5. **`pipeline/annotate_video.py`**: Renders an annotated demonstration video with tracking IDs, bounding boxes, live heads-up telemetry (HUD), and consensus plate text to `docs/demo/`.
+
+---
+
 ## 🧪 Testing
 
 Run test suites using `pytest`:

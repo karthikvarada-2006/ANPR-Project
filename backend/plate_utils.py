@@ -128,10 +128,10 @@ _CACHED_PLATE_COUNTS: Optional[List[Tuple[str, int]]] = None
 _CANONICAL_PARTITION_MAP: Optional[Dict[Tuple[int, str], Set[Tuple[str, int]]]] = None
 
 
-def get_all_distinct_plates(db: Optional[Any] = None, refresh: bool = False) -> List[Tuple[str, int]]:
+def get_all_distinct_plates(db: Optional[Any] = None, refresh: bool = False, source: Optional[str] = "sim") -> List[Tuple[str, int]]:
     """Retrieve distinct license plates and their sighting counts from the events table."""
     global _CACHED_PLATE_COUNTS, _CANONICAL_PARTITION_MAP
-    if _CACHED_PLATE_COUNTS is not None and not refresh:
+    if _CACHED_PLATE_COUNTS is not None and not refresh and source == "sim":
         return _CACHED_PLATE_COUNTS
 
     close_session = False
@@ -140,20 +140,25 @@ def get_all_distinct_plates(db: Optional[Any] = None, refresh: bool = False) -> 
         close_session = True
 
     try:
-        results = db.query(Event.plate, func.count(Event.id)).group_by(Event.plate).all()
-        _CACHED_PLATE_COUNTS = [(str(r[0]), int(r[1])) for r in results]
+        q = db.query(Event.plate, func.count(Event.id))
+        if source is not None:
+            q = q.filter(Event.source == source)
+        results = q.group_by(Event.plate).all()
+        plate_counts = [(str(r[0]), int(r[1])) for r in results]
 
-        # Build fast canonical partition index for sub-millisecond candidate pruning
-        part_map: Dict[Tuple[int, str], Set[Tuple[str, int]]] = collections.defaultdict(set)
-        for p, count in _CACHED_PLATE_COUNTS:
-            canon = p.translate(CANONICAL_MAP)
-            if len(p) == 10:
-                part_map[(0, canon[:4])].add((p, count))
-                part_map[(1, canon[3:7])].add((p, count))
-                part_map[(2, canon[6:])].add((p, count))
-        _CANONICAL_PARTITION_MAP = part_map
+        if source == "sim":
+            _CACHED_PLATE_COUNTS = plate_counts
+            # Build fast canonical partition index for sub-millisecond candidate pruning
+            part_map: Dict[Tuple[int, str], Set[Tuple[str, int]]] = collections.defaultdict(set)
+            for p, count in _CACHED_PLATE_COUNTS:
+                canon = p.translate(CANONICAL_MAP)
+                if len(p) == 10:
+                    part_map[(0, canon[:4])].add((p, count))
+                    part_map[(1, canon[3:7])].add((p, count))
+                    part_map[(2, canon[6:])].add((p, count))
+            _CANONICAL_PARTITION_MAP = part_map
 
-        return _CACHED_PLATE_COUNTS
+        return plate_counts
     finally:
         if close_session:
             db.close()
@@ -163,6 +168,7 @@ def find_similar_plates(
     query: str,
     max_distance: float = 1.0,
     db: Optional[Any] = None,
+    source: Optional[str] = "sim",
 ) -> List[PlateMatch]:
     """Search all distinct plates in the events table and return those within max_distance.
 
@@ -173,7 +179,7 @@ def find_similar_plates(
     if not norm_query:
         return []
 
-    plate_counts = get_all_distinct_plates(db=db)
+    plate_counts = get_all_distinct_plates(db=db, source=source)
     q_len = len(norm_query)
 
     # Use canonical partition index for length-10 plates (99.9% of fleet)

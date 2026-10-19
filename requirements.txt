@@ -6,9 +6,9 @@ networkx
 shapely
 fastapi
 uvicorn
+websockets
+httpx
 sqlalchemy
-psycopg2-binary
-geoalchemy2
 pydantic
 python-dotenv
 tqdm
@@ -16,3 +16,11 @@ matplotlib
 pytest
 kaggle
 scikit-learn
+opencv-python==5.0.0.93
+fast-plate-ocr[onnx]==1.1.0
+onnxruntime==1.30.0
+ultralytics==8.4.171
+lap>=0.5.12
+torch==2.14.1
+torchvision==0.29.1
+python-multipart

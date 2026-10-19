@@ -13,6 +13,8 @@ data/sim/*
 !data/sim/README.md
 data/simulated/*
 !data/simulated/.gitkeep
+data/processed/*
+runs/
 *.csv
 *.parquet
 *.sqlite3
@@ -48,3 +50,11 @@ Thumbs.db
 frontend/node_modules/
 frontend/build/
 frontend/dist/
+
+# Added before submission
+*.bak
+check_dups.py
+check_final.py
+check_real.py
+check_trip.py
+profile_jinan.py

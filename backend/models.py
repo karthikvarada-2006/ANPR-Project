@@ -50,6 +50,11 @@ class Event(Base):
     heading_degrees = Column(Float, nullable=True)
     lane = Column(Integer, nullable=True)
     ocr_confidence = Column(Float, nullable=True)
+    source = Column(String(20), nullable=True, default="sim", index=True)  # 'sim', 'video', 'image'
+    track_id = Column(Integer, nullable=True)
+    n_frames = Column(Integer, nullable=True)
+    vote_margin = Column(Float, nullable=True)
+    best_crop_path = Column(String(255), nullable=True)
 
     # Relationships
     camera = relationship("Camera", back_populates="events")
@@ -58,6 +63,7 @@ class Event(Base):
     __table_args__ = (
         Index("ix_events_camera_timestamp", "camera_id", "timestamp"),
         Index("ix_events_plate_timestamp", "plate", "timestamp"),
+        Index("ix_events_source", "source"),
     )
 
     def __repr__(self) -> str:

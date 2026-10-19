@@ -97,11 +97,16 @@ def get_zone_clustering(n_zones: int = 8) -> Tuple[Dict[str, str], List[str]]:
 def load_events_df(
     start: Optional[Union[str, datetime.datetime]] = None,
     end: Optional[Union[str, datetime.datetime]] = None,
+    source: Optional[str] = "sim",
 ) -> pd.DataFrame:
-    """Load raw ANPR events from SQLite with optional time window filtering."""
-    query = "SELECT id, plate, camera_id, timestamp, speed_kmh, heading_degrees, lane, ocr_confidence FROM events"
+    """Load raw ANPR events from SQLite with optional time window and source filtering."""
+    query = "SELECT id, plate, camera_id, timestamp, speed_kmh, heading_degrees, lane, ocr_confidence, source FROM events"
     conditions = []
     params = {}
+
+    if source is not None:
+        conditions.append("source = :source")
+        params["source"] = source
 
     if start is not None:
         start_dt = pd.to_datetime(start).to_pydatetime()
@@ -127,12 +132,13 @@ def camera_stats(
     window_minutes: int = 15,
     start: Optional[Union[str, datetime.datetime]] = None,
     end: Optional[Union[str, datetime.datetime]] = None,
+    source: Optional[str] = "sim",
 ) -> pd.DataFrame:
     """Calculate volume, unique fuzzy plates, average/p85 speed, and density score per camera-window.
 
     Density score is normalized 0 to 1 per camera based on its observed volume range.
     """
-    events_df = load_events_df(start=start, end=end)
+    events_df = load_events_df(start=start, end=end, source=source)
     if events_df.empty:
         return pd.DataFrame(columns=[
             "camera_id", "camera_name", "window_start", "window_end",
@@ -176,9 +182,10 @@ def city_flow_trend(
     window_minutes: int = 15,
     start: Optional[Union[str, datetime.datetime]] = None,
     end: Optional[Union[str, datetime.datetime]] = None,
+    source: Optional[str] = "sim",
 ) -> pd.DataFrame:
     """City-wide aggregate vehicle volume, unique plates, and speed trends per time window."""
-    events_df = load_events_df(start=start, end=end)
+    events_df = load_events_df(start=start, end=end, source=source)
     if events_df.empty:
         return pd.DataFrame(columns=[
             "window_start", "window_end", "vehicle_count", "unique_plates",
@@ -205,6 +212,7 @@ def congestion_hotspots(
     window_minutes: int = 15,
     start: Optional[Union[str, datetime.datetime]] = None,
     end: Optional[Union[str, datetime.datetime]] = None,
+    source: Optional[str] = "sim",
 ) -> pd.DataFrame:
     """Flag camera-windows as congested based on free-flow speed deficit & median volume.
 
@@ -213,7 +221,7 @@ def congestion_hotspots(
     - Vehicle count > camera's median volume across windows.
     Returns: camera_id, camera_name, window_start, window_end, severity (0-1), duration_minutes.
     """
-    stats = camera_stats(window_minutes=window_minutes, start=start, end=end)
+    stats = camera_stats(window_minutes=window_minutes, start=start, end=end, source=source)
     if stats.empty:
         return pd.DataFrame(columns=[
             "camera_id", "camera_name", "window_start", "window_end",
@@ -222,7 +230,7 @@ def congestion_hotspots(
         ])
 
     # Whole-day free-flow speed (85th percentile of whole day) and median count per camera
-    all_events = load_events_df()
+    all_events = load_events_df(source=source)
     cam_free_flow = all_events.groupby("camera_id")["speed_kmh"].apply(
         lambda s: float(np.percentile(s.dropna(), 85)) if len(s.dropna()) > 0 else 40.0
     ).to_dict()
@@ -287,9 +295,10 @@ def congestion_hotspots(
 def extract_vehicle_trips(
     start: Optional[Union[str, datetime.datetime]] = None,
     end: Optional[Union[str, datetime.datetime]] = None,
+    source: Optional[str] = "sim",
 ) -> pd.DataFrame:
     """Extract individual journeys from events grouped by vehicle plate and inactivity gaps."""
-    events_df = load_events_df(start=start, end=end)
+    events_df = load_events_df(start=start, end=end, source=source)
     if events_df.empty:
         return pd.DataFrame(columns=[
             "trip_id", "plate", "origin_camera", "dest_camera", "start_time", "end_time", "num_sightings"
@@ -316,6 +325,7 @@ def origin_destination_matrix(
     start: Optional[Union[str, datetime.datetime]] = None,
     end: Optional[Union[str, datetime.datetime]] = None,
     n_zones: int = 8,
+    source: Optional[str] = "sim",
 ) -> pd.DataFrame:
     """Compute zone-to-zone Origin-Destination vehicle trip counts matrix.
 
@@ -323,7 +333,7 @@ def origin_destination_matrix(
         Square pivot DataFrame with Origin zones as index and Destination zones as columns.
     """
     zone_map, zone_names = get_zone_clustering(n_zones=n_zones)
-    trips = extract_vehicle_trips(start=start, end=end)
+    trips = extract_vehicle_trips(start=start, end=end, source=source)
 
     if trips.empty:
         return pd.DataFrame(0, index=zone_names, columns=zone_names)
@@ -348,12 +358,14 @@ def route_density(
     window_minutes: int = 60,
     start: Optional[Union[str, datetime.datetime]] = None,
     end: Optional[Union[str, datetime.datetime]] = None,
+    source: Optional[str] = "sim",
 ) -> pd.DataFrame:
-    """Aggregate vehicle traversal counts along road segments per time window."""
-    events_df = load_events_df(start=start, end=end)
+    """Aggregate vehicle traversal counts along real camera corridor road segments per time window."""
+    events_df = load_events_df(start=start, end=end, source=source)
     if events_df.empty:
         return pd.DataFrame(columns=[
-            "window_start", "segment_id", "u_lat", "u_lon", "v_lat", "v_lon", "vehicle_count"
+            "window_start", "segment_id", "from_camera_id", "from_camera_name",
+            "to_camera_id", "to_camera_name", "u_lat", "u_lon", "v_lat", "v_lon", "vehicle_count"
         ])
 
     events_df = events_df.sort_values(["plate", "timestamp"]).reset_index(drop=True)
@@ -368,48 +380,54 @@ def route_density(
         & (events_df["dt"] <= 1800.0)
     ].copy()
 
+    if valid_hops.empty:
+        return pd.DataFrame(columns=[
+            "window_start", "segment_id", "from_camera_id", "from_camera_name",
+            "to_camera_id", "to_camera_name", "u_lat", "u_lon", "v_lat", "v_lon", "vehicle_count"
+        ])
+
     valid_hops["window_start"] = valid_hops["timestamp"].dt.floor(f"{window_minutes}min")
 
-    camera_paths = get_camera_paths()
-    segment_counts: Dict[Tuple[Any, str, float, float, float, float], int] = collections.defaultdict(int)
+    cams_df = load_cameras_df().set_index("camera_id")
+    cam_names = cams_df["name"].to_dict()
+    cam_coords = {cid: (float(row["lat"]), float(row["lon"])) for cid, row in cams_df.iterrows()}
 
-    for _, row in valid_hops.iterrows():
-        c1 = row["prev_camera"]
-        c2 = row["camera_id"]
+    # Group by window_start, from_camera, to_camera
+    grouped = valid_hops.groupby(["window_start", "prev_camera", "camera_id"]).size().reset_index(name="vehicle_count")
+
+    records = []
+    for _, row in grouped.iterrows():
+        c1 = str(row["prev_camera"])
+        c2 = str(row["camera_id"])
         w = row["window_start"]
+        cnt = int(row["vehicle_count"])
 
-        hop_info = camera_paths.get((c1, c2))
-        if not hop_info:
-            continue
+        c1_name = cam_names.get(c1, c1)
+        c2_name = cam_names.get(c2, c2)
+        u_coord = cam_coords.get(c1, (0.0, 0.0))
+        v_coord = cam_coords.get(c2, (0.0, 0.0))
 
-        coords = hop_info[2]
-        if len(coords) < 2:
-            continue
+        seg_display = f"{c1} {c1_name} → {c2} {c2_name}"
 
-        # Traverse road segments along path
-        for i in range(len(coords) - 1):
-            p1 = coords[i]
-            p2 = coords[i + 1]
-            seg_id = f"{p1[0]:.4f},{p1[1]:.4f}->{p2[0]:.4f},{p2[1]:.4f}"
-            segment_counts[(w, seg_id, p1[0], p1[1], p2[0], p2[1])] += 1
-
-    records = [
-        {
-            "window_start": k[0],
-            "segment_id": k[1],
-            "u_lat": k[2],
-            "u_lon": k[3],
-            "v_lat": k[4],
-            "v_lon": k[5],
-            "vehicle_count": count,
-        }
-        for k, count in segment_counts.items()
-    ]
+        records.append({
+            "window_start": w,
+            "segment_id": seg_display,
+            "from_camera_id": c1,
+            "from_camera_name": c1_name,
+            "to_camera_id": c2,
+            "to_camera_name": c2_name,
+            "u_lat": u_coord[0],
+            "u_lon": u_coord[1],
+            "v_lat": v_coord[0],
+            "v_lon": v_coord[1],
+            "vehicle_count": cnt,
+        })
 
     res_df = pd.DataFrame(records)
     if res_df.empty:
         return pd.DataFrame(columns=[
-            "window_start", "segment_id", "u_lat", "u_lon", "v_lat", "v_lon", "vehicle_count"
+            "window_start", "segment_id", "from_camera_id", "from_camera_name",
+            "to_camera_id", "to_camera_name", "u_lat", "u_lon", "v_lat", "v_lon", "vehicle_count"
         ])
 
     return res_df.sort_values(["window_start", "vehicle_count"], ascending=[True, False]).reset_index(drop=True)
@@ -419,12 +437,13 @@ def heatmap_points(
     window: Optional[Union[str, datetime.datetime]] = None,
     start: Optional[Union[str, datetime.datetime]] = None,
     end: Optional[Union[str, datetime.datetime]] = None,
+    source: Optional[str] = "sim",
 ) -> pd.DataFrame:
     """Generate geospatial heatmap weight points based on density and slowness.
 
     Weights are guaranteed to be strictly bounded between 0.0 and 1.0.
     """
-    stats = camera_stats(window_minutes=15, start=start, end=end)
+    stats = camera_stats(window_minutes=15, start=start, end=end, source=source)
     if stats.empty:
         return pd.DataFrame(columns=["lat", "lon", "weight", "camera_id", "camera_name", "vehicle_count", "avg_speed_kmh"])
 
@@ -442,7 +461,7 @@ def heatmap_points(
         stats = stats[stats["window_start"] == peak_w]
 
     # Calculate free-flow speed benchmark per camera
-    all_events = load_events_df()
+    all_events = load_events_df(source=source)
     cam_free_flow = all_events.groupby("camera_id")["speed_kmh"].apply(
         lambda s: float(np.percentile(s.dropna(), 85)) if len(s.dropna()) > 0 else 40.0
     ).to_dict()

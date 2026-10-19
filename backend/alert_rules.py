@@ -89,6 +89,9 @@ class RuleContext:
         """Singleton accessor for zero-overhead rule execution."""
         if cls._instance is None:
             cls._instance = RuleContext()
+        else:
+            if not cls._instance.camera_paths:
+                cls._instance._load_camera_paths()
         return cls._instance
 
     def load_all(self) -> None:
@@ -313,6 +316,14 @@ def check_cloned_plate(
 
     if implied_speed_kmh > speed_threshold_kmh:
         plate = event.get("plate", "")
+        curr_eid = event.get("event_id")
+        if curr_eid is not None and pd.isna(curr_eid):
+            curr_eid = None
+
+        prev_eid = prev_event.get("event_id")
+        if prev_eid is not None and pd.isna(prev_eid):
+            prev_eid = None
+
         return [
             {
                 "alert_type": "CLONED_PLATE",
@@ -320,7 +331,7 @@ def check_cloned_plate(
                 "plate": plate,
                 "camera_id": curr_cid,
                 "timestamp": curr_ts,
-                "event_id": event.get("event_id"),
+                "event_id": curr_eid,
                 "details": {
                     "previous_camera": prev_cid,
                     "previous_timestamp": prev_ts.isoformat(),
@@ -330,8 +341,8 @@ def check_cloned_plate(
                     "speed_threshold_kmh": speed_threshold_kmh,
                     "ocr_confidence": round(curr_conf, 3),
                     "previous_ocr_confidence": round(prev_conf, 3),
-                    "event_id": event.get("event_id"),
-                    "previous_event_id": prev_event.get("event_id"),
+                    "event_id": curr_eid,
+                    "previous_event_id": prev_eid,
                     "message": (
                         f"Cloned plate suspected: vehicle {plate} seen at {prev_cid} and {curr_cid} "
                         f"({dist_m:.0f}m apart) in {dt_sec:.0f}s (implied speed {implied_speed_kmh:.1f} km/h)."
