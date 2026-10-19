@@ -663,6 +663,7 @@
               <thead>
                 <tr>
                   <th>License Plate</th>
+                  <th>Status</th>
                   <th>Detector Conf</th>
                   <th>OCR Conf</th>
                   <th>Blacklist Status</th>
@@ -671,7 +672,7 @@
                 </tr>
               </thead>
               <tbody id="pr-detected-tbody">
-                <tr><td colspan="6" class="text-center text-muted">No plate detection results yet.</td></tr>
+                <tr><td colspan="7" class="text-center text-muted">No plate detection results yet.</td></tr>
               </tbody>
             </table>
           </div>
@@ -687,6 +688,8 @@
             <p class="card-subtitle">Real-time and batch-processed camera video detections with consensus voting</p>
           </div>
           <div class="header-tools">
+            <!-- Review status summary counter badge: updated directly from API responses -->
+            <span class="badge-review-counter" id="pr-video-review-counter">0 of 0 events need review</span>
             <input type="text" class="input-control input-sm" id="pr-video-filter-plate" placeholder="Filter plate..." style="width: 140px;" />
             <input type="text" class="input-control input-sm" id="pr-video-filter-cam" placeholder="Filter camera..." style="width: 120px;" />
             <button class="btn btn-secondary btn-sm" id="pr-video-refresh-btn">🔄 Refresh Events</button>
@@ -699,6 +702,7 @@
               <tr>
                 <th>Crop Thumbnail</th>
                 <th>Voted Plate</th>
+                <th>Status</th>
                 <th>Camera ID</th>
                 <th>Timestamp</th>
                 <th>Frames Used</th>
@@ -708,7 +712,7 @@
               </tr>
             </thead>
             <tbody id="pr-video-events-tbody">
-              <tr><td colspan="8" class="text-center text-muted">Loading video ANPR events...</td></tr>
+              <tr><td colspan="9" class="text-center text-muted">Loading video ANPR events...</td></tr>
             </tbody>
           </table>
         </div>

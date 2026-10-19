@@ -1502,7 +1502,7 @@ async function initPlateReaderTab() {
         resultsBadge.className = "badge-pill";
         annotatedImg.style.display = "none";
         emptyState.style.display = "block";
-        detectedTbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">No license plates found in the analyzed frame.</td></tr>`;
+        detectedTbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">No license plates found in the analyzed frame.</td></tr>`;
       } else {
         resultsBadge.textContent = `${data.detected_count} Plate(s) Detected`;
         resultsBadge.className = "badge-pill";
@@ -1512,6 +1512,11 @@ async function initPlateReaderTab() {
 
         detectedTbody.innerHTML = data.plates
           .map((p) => {
+            // Display review status directly as sent by the API backend (do not recompute thresholds in UI)
+            const statusBadge = p.review_status === "REVIEW"
+              ? `<span class="badge-status review" title="Low OCR confidence requires operator review">⚠️ REVIEW</span>`
+              : `<span class="badge-status ok" title="High confidence plate read">✅ OK</span>`;
+
             const blBadge = p.is_blacklisted
               ? `<span class="badge-pill" style="background: rgba(239,68,68,0.2); color: #f87171; border: 1px solid #ef4444;" title="${p.blacklist_reason || 'Wanted'}">🚨 BLACKLISTED</span>`
               : `<span class="badge-pill" style="background: rgba(16,185,129,0.2); color: #34d399; border: 1px solid #10b981;">✅ CLEAN</span>`;
@@ -1527,6 +1532,7 @@ async function initPlateReaderTab() {
             return `
               <tr>
                 <td><span class="plate-badge-sm">${p.plate}</span></td>
+                <td>${statusBadge}</td>
                 <td><strong class="text-cyan">${Math.round(p.detector_confidence * 100)}%</strong></td>
                 <td><strong class="text-emerald">${Math.round(p.ocr_confidence * 100)}%</strong></td>
                 <td>${blBadge}</td>
@@ -1556,7 +1562,7 @@ async function initPlateReaderTab() {
     const plateVal = videoFilterPlate ? videoFilterPlate.value.trim() : "";
     const camVal = videoFilterCam ? videoFilterCam.value.trim() : "";
 
-    tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted">Loading video events...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted">Loading video events...</td></tr>`;
 
     try {
       let url = `${API_BASE}/api/events?source=video&limit=50`;
@@ -1567,10 +1573,16 @@ async function initPlateReaderTab() {
       if (!res.ok) throw new Error("Failed to load video events.");
       const data = await res.json();
 
+      const reviewCounterEl = document.getElementById("pr-video-review-counter");
+
       if (!data.events || data.events.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted">No video events recorded yet. Run 'python ingest_video_events.py' to import video detections.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted">No video events recorded yet. Run 'python ingest_video_events.py' to import video detections.</td></tr>`;
         const titleEl = document.getElementById("pr-video-events-title");
         if (titleEl) titleEl.textContent = "📹 Video ANPR Events";
+        if (reviewCounterEl) {
+          reviewCounterEl.textContent = "0 of 0 events need review";
+          reviewCounterEl.classList.remove("has-review");
+        }
         return;
       }
 
@@ -1579,6 +1591,18 @@ async function initPlateReaderTab() {
       if (titleEl) {
         const hasVoted = data.events.some((ev) => ev.n_frames && ev.n_frames > 1);
         titleEl.textContent = hasVoted ? "📹 Video ANPR Events (voted)" : "📹 Video ANPR Events";
+      }
+
+      // Count events flagged for review by inspecting API review_status (never recompute numeric thresholds)
+      const totalCount = data.events.length;
+      const reviewCount = data.events.filter((ev) => ev.review_status === "REVIEW").length;
+      if (reviewCounterEl) {
+        reviewCounterEl.textContent = `${reviewCount} of ${totalCount} events need review`;
+        if (reviewCount > 0) {
+          reviewCounterEl.classList.add("has-review");
+        } else {
+          reviewCounterEl.classList.remove("has-review");
+        }
       }
 
       tbody.innerHTML = data.events
@@ -1591,10 +1615,16 @@ async function initPlateReaderTab() {
           const marginDisplay = ev.vote_margin != null ? Number(ev.vote_margin).toFixed(2) : "--";
           const ocrConfDisplay = ev.ocr_confidence != null ? `${(Number(ev.ocr_confidence) * 100).toFixed(1)}%` : "--";
 
+          // Show status badge sent by API: "REVIEW" (amber) or "OK" (green)
+          const statusBadge = ev.review_status === "REVIEW"
+            ? `<span class="badge-status review" title="Low confidence or vote margin requires operator review">⚠️ REVIEW</span>`
+            : `<span class="badge-status ok" title="High confidence consensus read">✅ OK</span>`;
+
           return `
           <tr>
             <td>${imgEl}</td>
             <td><span class="plate-badge-sm">${ev.plate}</span></td>
+            <td>${statusBadge}</td>
             <td><span class="text-cyan font-bold">${ev.camera_id}</span></td>
             <td class="text-muted" style="font-size: 0.8rem;">${ev.timestamp.replace("T", " ").slice(0, 19)}</td>
             <td><strong class="text-purple">${ev.n_frames || 1} frame(s)</strong></td>
@@ -1610,7 +1640,7 @@ async function initPlateReaderTab() {
         })
         .join("");
     } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="8" class="text-center text-rose">Error loading video events: ${err.message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="text-center text-rose">Error loading video events: ${err.message}</td></tr>`;
     }
   }
 

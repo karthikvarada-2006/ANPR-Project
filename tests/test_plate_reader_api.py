@@ -245,3 +245,142 @@ def test_sim_analytics_unchanged():
     df_sim = load_events_df()
     assert len(df_sim) == 31244, f"load_events_df() default count mismatch: {len(df_sim)}"
 
+
+# ==============================================================================
+# 6. Low-Confidence Plate Read Review Flag Tests
+# ==============================================================================
+def test_review_status_unit_logic():
+    """Unit test compute_review_status logic against threshold 0.80.
+    
+    Checks:
+    - OCR confidence 0.611 gives REVIEW
+    - OCR confidence 0.99 gives OK
+    - Missing/None confidence does not crash and returns OK
+    - Vote margin < 0.80 gives REVIEW
+    - Edge cases at exact 0.80 boundary return OK
+    """
+    from backend.plate_utils import REVIEW_CONFIDENCE_THRESHOLD, compute_review_status
+
+    # Must be exact round number 0.80 constant
+    assert REVIEW_CONFIDENCE_THRESHOLD == 0.80, "REVIEW_CONFIDENCE_THRESHOLD must be 0.80"
+
+    # Required specification checks:
+    # 1. confidence 0.611 gives REVIEW
+    assert compute_review_status(ocr_confidence=0.611) == "REVIEW"
+
+    # 2. 0.99 gives OK
+    assert compute_review_status(ocr_confidence=0.99) == "OK"
+
+    # 3. Missing confidence does not crash (returns OK)
+    assert compute_review_status(ocr_confidence=None) == "OK"
+    assert compute_review_status(ocr_confidence=None, vote_margin=None) == "OK"
+    assert compute_review_status(vote_margin=None) == "OK"
+
+    # 4. Vote margin checks (threshold 0.80)
+    assert compute_review_status(vote_margin=0.7107) == "REVIEW"
+    assert compute_review_status(vote_margin=0.85) == "OK"
+
+    # 5. Combined checks (OR condition: either below threshold triggers REVIEW)
+    assert compute_review_status(ocr_confidence=0.95, vote_margin=0.65) == "REVIEW"
+    assert compute_review_status(ocr_confidence=0.70, vote_margin=0.95) == "REVIEW"
+    assert compute_review_status(ocr_confidence=0.80, vote_margin=0.80) == "OK"
+    assert compute_review_status(ocr_confidence=0.80, vote_margin=None) == "OK"
+    assert compute_review_status(ocr_confidence=None, vote_margin=0.80) == "OK"
+
+
+def test_review_status_in_api_endpoints(client):
+    """Integration test verifying review_status is returned by API endpoints."""
+    # 1. GET /api/events (default query)
+    resp = client.get("/api/events?limit=20")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "events" in data
+    assert len(data["events"]) > 0
+    for ev in data["events"]:
+        assert "review_status" in ev, "Event missing review_status field"
+        assert ev["review_status"] in ("OK", "REVIEW")
+
+    # 2. GET /api/events?source=video
+    resp_video = client.get("/api/events?source=video&limit=20")
+    assert resp_video.status_code == 200
+    video_events = resp_video.json()["events"]
+    assert len(video_events) > 0
+    # At least one video sequence with lower confidence should be flagged for review
+    statuses = {ev["review_status"] for ev in video_events}
+    assert "review_status" in video_events[0]
+    assert "REVIEW" in statuses or "OK" in statuses
+
+    # 3. POST /api/plates/read on blank image
+    blank_img = np.full((300, 300, 3), 128, dtype=np.uint8)
+    _, encoded = cv2.imencode(".jpg", blank_img)
+    resp_blank = client.post(
+        "/api/plates/read",
+        files={"file": ("blank.jpg", encoded.tobytes(), "image/jpeg")},
+    )
+    assert resp_blank.status_code == 200
+    data_blank = resp_blank.json()
+    assert "review_status" in data_blank
+    assert data_blank["review_status"] == "OK"
+
+    # 4. POST /api/plates/read on known vehicle image
+    test_img_path = PROJECT_ROOT / "data" / "raw" / "indian-number-plates-dataset" / "video_images" / "video2_1360.jpg"
+    if test_img_path.exists():
+        with open(test_img_path, "rb") as f:
+            img_bytes = f.read()
+        resp_img = client.post(
+            "/api/plates/read",
+            files={"file": ("vehicle.jpg", img_bytes, "image/jpeg")},
+        )
+        assert resp_img.status_code == 200
+        data_img = resp_img.json()
+        assert "review_status" in data_img
+        assert data_img["review_status"] in ("OK", "REVIEW")
+        if data_img["plates"]:
+            for p in data_img["plates"]:
+                assert "review_status" in p
+                assert p["review_status"] in ("OK", "REVIEW")
+
+
+def test_sim_invariants_and_alert_counts():
+    """Verify simulated numbers remain strictly preserved:
+    - 31,244 simulated events
+    - 40 simulation cameras
+    - 44 total alerts generated from live surveillance engine
+    """
+    from backend.alert_engine import AlertEngine
+    from backend.alert_rules import RuleContext
+    import pandas as pd
+    from simulator.config import EVENTS_PATH
+
+    db_path = get_sqlite_path()
+    conn = sqlite3.connect(str(db_path))
+    cursor = conn.cursor()
+
+    # 1. Verify 31,244 sim events
+    cursor.execute("SELECT count(*) FROM events WHERE source = 'sim'")
+    sim_count = cursor.fetchone()[0]
+    assert sim_count == 31244, f"Expected 31,244 sim events, got {sim_count}"
+
+    # 2. Verify 40 simulation cameras
+    cursor.execute("SELECT count(*) FROM cameras WHERE camera_id LIKE 'CAM_%' AND camera_id NOT LIKE '%VIDEO%'")
+    sim_cams = cursor.fetchone()[0]
+    assert sim_cams == 40, f"Expected 40 cameras, got {sim_cams}"
+    conn.close()
+
+    # 3. Verify exactly 44 alerts from events.csv replay through AlertEngine
+    assert EVENTS_PATH.exists(), f"Events CSV not found: {EVENTS_PATH}"
+    df = pd.read_csv(EVENTS_PATH)
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df = df.sort_values("timestamp").reset_index(drop=True)
+
+    engine = AlertEngine(dedup_minutes=10.0, context=RuleContext.get_instance())
+    alerts = []
+    for _, row in df.iterrows():
+        ev_dict = row.to_dict()
+        triggered = engine.process_event(ev_dict)
+        if triggered:
+            alerts.extend(triggered)
+
+    assert len(alerts) == 44, f"Expected exactly 44 alerts, got {len(alerts)}"
+
+

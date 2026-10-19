@@ -71,6 +71,8 @@ from backend.db import SessionLocal
 from backend.models import Alert, Blacklist, Camera, Event
 from backend.plate_utils import (
     CANONICAL_MAP,
+    REVIEW_CONFIDENCE_THRESHOLD,
+    compute_review_status,
     find_similar_plates,
     get_all_distinct_plates,
     normalize_plate,
@@ -984,6 +986,9 @@ async def read_uploaded_plate(
         # Number of known sightings in the database
         sightings_count = db.query(func.count(Event.id)).filter(Event.plate == plate_text).scalar() or 0
 
+        # Determine if this plate read requires human review (e.g. low OCR confidence)
+        plate_review_status = compute_review_status(ocr_confidence=ocr_conf)
+
         plates_output.append({
             "box": [round(float(c), 1) for c in raw_box],
             "detector_confidence": det_conf,
@@ -992,6 +997,7 @@ async def read_uploaded_plate(
             "is_blacklisted": is_bl,
             "blacklist_reason": bl_reason,
             "known_sightings": sightings_count,
+            "review_status": plate_review_status,
         })
 
         # Render visual annotations
@@ -1024,8 +1030,13 @@ async def read_uploaded_plate(
     success, enc_buf = cv2.imencode(".jpg", annotated_bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
     base64_str = f"data:image/jpeg;base64,{base64.b64encode(enc_buf.tobytes()).decode('utf-8')}" if success else ""
 
+    # Overall review status across all detected plates in this frame:
+    # If any plate is flagged as 'REVIEW', the overall image read is 'REVIEW'; otherwise 'OK'
+    overall_review_status = "REVIEW" if any(p.get("review_status") == "REVIEW" for p in plates_output) else "OK"
+
     return {
         "detected_count": len(plates_output),
+        "review_status": overall_review_status,
         "plates": plates_output,
         "annotated_image_base64": base64_str,
     }
@@ -1109,6 +1120,8 @@ def get_events(
 
     results = []
     for ev in events:
+        # Compute review status on the fly based on OCR confidence and vote margin
+        rev_status = compute_review_status(ocr_confidence=ev.ocr_confidence, vote_margin=ev.vote_margin)
         results.append({
             "id": ev.id,
             "plate": ev.plate,
@@ -1123,6 +1136,7 @@ def get_events(
             "n_frames": ev.n_frames,
             "vote_margin": ev.vote_margin,
             "best_crop_path": ev.best_crop_path,
+            "review_status": rev_status,
         })
 
     return {

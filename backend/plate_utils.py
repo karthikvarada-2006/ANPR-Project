@@ -34,6 +34,49 @@ CANONICAL_MAP = str.maketrans({
     "O": "0", "B": "8", "I": "1", "S": "5", "D": "0", "Z": "2", "G": "6"
 })
 
+# ==============================================================================
+# Quality Assurance: Low-Confidence Plate Read Review Flag
+# ==============================================================================
+# Single named threshold constant for low-confidence plate reads.
+# Any plate read with an OCR confidence or video consensus vote margin below
+# this 80% mark requires human review.
+REVIEW_CONFIDENCE_THRESHOLD: float = 0.80
+
+
+def compute_review_status(
+    ocr_confidence: Optional[float] = None,
+    vote_margin: Optional[float] = None,
+) -> str:
+    """Computes whether a license plate read needs human review on the fly.
+
+    Beginner-Friendly Explanation:
+    Automatic Number Plate Recognition (ANPR) systems produce two confidence scores:
+    1. ocr_confidence: How sure the deep learning OCR model is of the read text (0.0 to 1.0).
+    2. vote_margin: In video sequences with multiple frames, how decisively the winning
+       plate candidate beat the runner-up candidate in consensus voting (0.0 to 1.0).
+
+    If either score drops below our REVIEW_CONFIDENCE_THRESHOLD (0.80, or 80%), the read
+    is flagged with status 'REVIEW' so traffic operators can double-check it.
+    If both scores meet or exceed 0.80 (or if missing/None), status is 'OK'.
+
+    Safety Guarantee:
+    - Never raises an exception if a score is None, empty, or unparseable.
+    - Missing scores are ignored rather than failing the read.
+    """
+    try:
+        if ocr_confidence is not None and float(ocr_confidence) < REVIEW_CONFIDENCE_THRESHOLD:
+            return "REVIEW"
+    except (ValueError, TypeError):
+        pass
+
+    try:
+        if vote_margin is not None and float(vote_margin) < REVIEW_CONFIDENCE_THRESHOLD:
+            return "REVIEW"
+    except (ValueError, TypeError):
+        pass
+
+    return "OK"
+
 
 class PlateMatch:
     """Represents a matched plate candidate with sighting count and similarity distance."""
