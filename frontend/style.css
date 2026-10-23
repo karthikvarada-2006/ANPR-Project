@@ -1196,23 +1196,30 @@ h1, h2, h3, h4, .brand-title {
 }
 
 .alerts-feed-card {
-  height: 560px;
+  min-height: 560px;
   display: flex;
   flex-direction: column;
+}
+
+.alerts-feed-card .card-header {
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .filter-group {
   display: flex;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .alerts-feed-list {
   flex: 1;
   overflow-y: auto;
+  max-height: 480px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding-right: 4px;
+  padding-right: 6px;
 }
 
 .alert-feed-item {
@@ -1223,7 +1230,10 @@ h1, h2, h3, h4, .brand-title {
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
-  overflow: hidden;
+  /* Size to content: no fixed height, flex-shrink 0 to prevent squeezing */
+  height: auto;
+  flex-shrink: 0;
+  line-height: 1.4;
 }
 
 .alert-feed-item:hover, .alert-feed-item.selected {
@@ -1247,12 +1257,14 @@ h1, h2, h3, h4, .brand-title {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 6px;
+  gap: 8px;
 }
 
 .alert-badge-group {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .sev-badge {
@@ -1261,6 +1273,7 @@ h1, h2, h3, h4, .brand-title {
   padding: 2px 7px;
   border-radius: var(--radius-sm);
   letter-spacing: 0.04em;
+  flex-shrink: 0;
 }
 
 .sev-badge.high { background: rgba(239, 68, 68, 0.25); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.5); }
@@ -1278,12 +1291,15 @@ h1, h2, h3, h4, .brand-title {
   font-size: 0.72rem;
   color: var(--text-muted);
   font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .alert-feed-desc {
   font-size: 0.8rem;
   color: var(--text-secondary);
   line-height: 1.4;
+  word-break: break-word;
 }
 
 .alert-feed-cam {

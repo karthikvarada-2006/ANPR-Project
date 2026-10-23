@@ -78,6 +78,43 @@ def compute_review_status(
     return "OK"
 
 
+# ==============================================================================
+# CSV Export Utilities: Security & Filename Sanitization
+# ==============================================================================
+def escape_csv_cell(value: Any) -> Any:
+    """Escapes CSV formula injection characters (=, +, -, @) for text cells.
+
+    Beginner-Friendly Explanation:
+    Spreadsheet applications (such as Microsoft Excel, Google Sheets, or LibreOffice Calc)
+    treat cells starting with '=', '+', '-', or '@' as executable formulas.
+    If untrusted input (such as an adversarial vehicle license plate) begins with one of
+    these characters, it could trigger unwanted formula execution upon opening.
+    Prepending an apostrophe (') instructs spreadsheet software to display the content
+    strictly as plain text. Numeric values (integers, floats) are kept as numbers.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, (int, float)):
+        return value
+    s = str(value)
+    if s and s[0] in ("=", "+", "-", "@"):
+        return "'" + s
+    return s
+
+
+def sanitize_filename_plate(plate: str) -> str:
+    """Sanitizes a plate string for safe Content-Disposition download filenames.
+
+    Beginner-Friendly Explanation:
+    When returning downloadable files like 'journey_<PLATE>.csv', we must keep only safe,
+    clean characters to prevent header injection or directory traversal issues.
+    This function preserves strictly A-Z, 0-9, and underscore '_', discarding any
+    other character.
+    """
+    safe = re.sub(r"[^A-Z0-9_]", "", (plate or "").upper())
+    return safe or "UNKNOWN"
+
+
 class PlateMatch:
     """Represents a matched plate candidate with sighting count and similarity distance."""
 

@@ -362,3 +362,81 @@ def test_wrong_way_disabled_by_default_in_engine(engine: AlertEngine):
     wrong_way_alerts = [a for a in alerts if a["alert_type"] == "WRONG_WAY"]
     assert len(wrong_way_alerts) == 0
 
+
+def test_synthetic_overspeed_two_camera_events(engine: AlertEngine):
+    """Synthetic unit test: in-memory verification of OVERSPEED alert rule across two camera sightings.
+
+    Label: synthetic (in-memory only, no database interaction).
+    Simulates a vehicle seen at two cameras a known distance apart (2,000 meters):
+    - Case A (Above threshold): vehicle traverses 2,000 m in 72.0 s -> implied speed = (2000 / 72) * 3.6 = 100.0 km/h.
+      Since 100.0 km/h exceeds the 80.0 km/h limit, an OVERSPEED alert must be triggered.
+    - Case B (Below threshold): vehicle traverses 2,000 m in 180.0 s -> implied speed = (2000 / 180) * 3.6 = 40.0 km/h.
+      Since 40.0 km/h is below the 80.0 km/h limit, no OVERSPEED alert must be triggered.
+    """
+    engine.reset()
+
+    # Known corridor parameters
+    known_distance_meters = 2000.0  # 2.0 km corridor between Camera 1 and Camera 2
+    cam1 = "CAM_SYNTH_01"
+    cam2 = "CAM_SYNTH_02"
+
+    # --- Case A: Vehicle traveling clearly ABOVE the 80 km/h threshold (100 km/h) ---
+    plate_fast = "KA05FAST99"
+    t1_fast = datetime.datetime(2026, 10, 1, 10, 0, 0)
+    dt_fast_seconds = 72.0  # 2000 m in 72 s = 27.78 m/s = 100.0 km/h
+    t2_fast = t1_fast + datetime.timedelta(seconds=dt_fast_seconds)
+    implied_speed_fast = round((known_distance_meters / dt_fast_seconds) * 3.6, 1)  # 100.0 km/h
+
+    ev1_fast = {
+        "plate": plate_fast,
+        "camera_id": cam1,
+        "timestamp": t1_fast,
+        "speed_kmh": 50.0,  # normal entry speed at first camera
+    }
+    ev2_fast = {
+        "plate": plate_fast,
+        "camera_id": cam2,
+        "timestamp": t2_fast,
+        "speed_kmh": implied_speed_fast,  # 100.0 km/h (> 80 km/h) clocked on corridor hop
+    }
+
+    # In-memory processing only (never saved to database)
+    alerts1 = engine.process_event(ev1_fast, save_to_db=False)
+    assert len([a for a in alerts1 if a["alert_type"] == "OVERSPEED"]) == 0
+
+    alerts2 = engine.process_event(ev2_fast, save_to_db=False)
+    overspeed_alerts = [a for a in alerts2 if a["alert_type"] == "OVERSPEED"]
+    assert len(overspeed_alerts) == 1, "Speed 100.0 km/h must trigger an OVERSPEED alert"
+    assert overspeed_alerts[0]["severity"] == "LOW"
+    assert overspeed_alerts[0]["plate"] == plate_fast
+    assert overspeed_alerts[0]["details"]["speed_kmh"] == 100.0
+    assert overspeed_alerts[0]["details"]["speed_limit_kmh"] == 80.0
+
+    # --- Case B: Vehicle traveling clearly BELOW the 80 km/h threshold (40 km/h) ---
+    plate_slow = "KA05SLOW01"
+    t1_slow = datetime.datetime(2026, 10, 1, 11, 0, 0)
+    dt_slow_seconds = 180.0  # 2000 m in 180 s = 11.11 m/s = 40.0 km/h
+    t2_slow = t1_slow + datetime.timedelta(seconds=dt_slow_seconds)
+    implied_speed_slow = round((known_distance_meters / dt_slow_seconds) * 3.6, 1)  # 40.0 km/h
+
+    ev1_slow = {
+        "plate": plate_slow,
+        "camera_id": cam1,
+        "timestamp": t1_slow,
+        "speed_kmh": 40.0,
+    }
+    ev2_slow = {
+        "plate": plate_slow,
+        "camera_id": cam2,
+        "timestamp": t2_slow,
+        "speed_kmh": implied_speed_slow,  # 40.0 km/h (< 80 km/h)
+    }
+
+    alerts_slow1 = engine.process_event(ev1_slow, save_to_db=False)
+    assert len([a for a in alerts_slow1 if a["alert_type"] == "OVERSPEED"]) == 0
+
+    alerts_slow2 = engine.process_event(ev2_slow, save_to_db=False)
+    overspeed_slow = [a for a in alerts_slow2 if a["alert_type"] == "OVERSPEED"]
+    assert len(overspeed_slow) == 0, "Speed 40.0 km/h must NOT trigger an OVERSPEED alert"
+
+

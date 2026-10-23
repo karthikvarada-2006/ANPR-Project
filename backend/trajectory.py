@@ -465,15 +465,20 @@ def get_trajectory(
                 is_impossible = (implied_speed > MAX_IMPOSSIBLE_SPEED_KMH)
 
             if is_impossible:
+                # Flag impossible hop (e.g. implied speed > 120 km/h indicates cloned plate anomaly)
+                dist_m = round(hop_dist_km * 1000.0, 1)
                 flagged_hop = {
                     "from_camera": prev_pt["camera_id"],
                     "to_camera": curr_pt["camera_id"],
+                    "previous_camera": prev_pt["camera_id"],
+                    "camera_id": curr_pt["camera_id"],
                     "from_camera_name": prev_pt["name"],
                     "to_camera_name": curr_pt["name"],
                     "from_timestamp": prev_pt["timestamp"].isoformat() if hasattr(prev_pt["timestamp"], "isoformat") else str(prev_pt["timestamp"]),
                     "to_timestamp": curr_pt["timestamp"].isoformat() if hasattr(curr_pt["timestamp"], "isoformat") else str(curr_pt["timestamp"]),
                     "time_delta_seconds": round(dt, 1),
                     "distance_km": round(hop_dist_km, 3),
+                    "distance_meters": dist_m,
                     "implied_speed_kmh": round(implied_speed, 1) if dt > 0 else 999.0,
                     "reason": "IMPOSSIBLE",
                 }

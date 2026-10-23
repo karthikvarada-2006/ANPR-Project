@@ -437,11 +437,37 @@ function initTrajectoryTab() {
       trajectoryMap.fitBounds(L.latLngBounds(trajAnimationPoints), { padding: [30, 30] });
     }
   });
+
+  // Export Journey CSV button listener
+  const exportBtn = document.getElementById("traj-export-csv-btn");
+  if (exportBtn) {
+    exportBtn.addEventListener("click", () => {
+      const plate = exportBtn.dataset.plate || document.getElementById("traj-display-plate")?.textContent?.trim();
+      if (!plate || plate === "NO VEHICLE SELECTED") return;
+
+      // Download CSV from the export endpoint for the currently shown vehicle
+      const url = `${API_BASE}/api/trajectory/${encodeURIComponent(plate)}/export`;
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `journey_${plate.toUpperCase().replace(/[^A-Z0-9_]/g, "")}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast(`Exporting journey CSV for ${plate}...`, "info");
+    });
+  }
 }
 
 async function loadVehicleTrajectory(plate, fuzzy = true) {
   const notFoundBanner = document.getElementById("traj-not-found-banner");
   notFoundBanner.classList.add("hidden");
+
+  // Disable export button while loading or if search fails
+  const exportBtn = document.getElementById("traj-export-csv-btn");
+  if (exportBtn) {
+    exportBtn.disabled = true;
+    exportBtn.dataset.plate = "";
+  }
 
   // Reset playback
   stopTrajectoryPlayback();
@@ -473,6 +499,13 @@ function renderTrajectoryResult(trajData) {
   document.getElementById("traj-trips-summary").textContent = `${trajData.total_trips} ${trajData.total_trips === 1 ? "Trip" : "Trips"}`;
   document.getElementById("traj-sightings-count").textContent = `${trajData.points.length} Sightings`;
   document.getElementById("traj-total-dist").textContent = `${trajData.total_distance_km.toFixed(1)} km`;
+
+  // Enable the Export Journey (CSV) button for the plate currently shown
+  const exportBtn = document.getElementById("traj-export-csv-btn");
+  if (exportBtn) {
+    exportBtn.disabled = false;
+    exportBtn.dataset.plate = trajData.plate;
+  }
   document.getElementById("traj-total-dur").textContent = `${Math.round(trajData.total_duration_seconds / 60)} min`;
 
   const avgSpeed = trajData.total_duration_seconds > 0 ? (trajData.total_distance_km / (trajData.total_duration_seconds / 3600)).toFixed(1) : 0;
@@ -533,17 +566,32 @@ function renderTrajectoryResult(trajData) {
   if (flaggedHops.length > 0) {
     flaggedBox.classList.remove("hidden");
     flaggedList.innerHTML = flaggedHops
-      .map(
-        (h) => `
-        <div>• Hop between <strong>${h.previous_camera}</strong> and <strong>${h.camera_id}</strong> (${Math.round(h.distance_meters)}m in ${Math.round(h.time_delta_seconds)}s) &rarr; <span class="font-bold text-rose">${h.implied_speed_kmh.toFixed(1)} km/h</span> (${h.reason})</div>
-      `
-      )
+      .map((h) => {
+        const fromCam = h.previous_camera || h.from_camera || "Unknown";
+        const toCam = h.camera_id || h.to_camera || "Unknown";
+        const distM = Math.round(h.distance_meters != null ? h.distance_meters : ((h.distance_km || 0) * 1000));
+        const dtSec = Math.round(h.time_delta_seconds || 0);
+        const spd = Number(h.implied_speed_kmh || 0).toFixed(1);
+        return `<div>• Impossible Hop between <strong>${fromCam}</strong> and <strong>${toCam}</strong> (${distM}m in ${dtSec}s) &rarr; <span class="font-bold text-rose">${spd} km/h</span> (Cloned Plate Anomaly)</div>`;
+      })
       .join("");
 
-    // Draw dashed lines between the flagged camera pairs
+    // Draw dashed red lines on the map between the flagged camera pairs
     flaggedHops.forEach((h) => {
-      const c1 = camerasById[h.previous_camera];
-      const c2 = camerasById[h.camera_id];
+      const fromCam = h.previous_camera || h.from_camera;
+      const toCam = h.camera_id || h.to_camera;
+      let c1 = camerasById[fromCam];
+      let c2 = camerasById[toCam];
+      // Fallback coordinate lookup from trajectory points if camerasById not yet indexed
+      if (!c1 && trajData.points) {
+        const pt = trajData.points.find((p) => p.camera_id === fromCam || p.camera === fromCam);
+        if (pt) c1 = { lat: pt.lat, lon: pt.lon };
+      }
+      if (!c2 && trajData.points) {
+        const pt = trajData.points.find((p) => p.camera_id === toCam || p.camera === toCam);
+        if (pt) c2 = { lat: pt.lat, lon: pt.lon };
+      }
+
       if (c1 && c2) {
         const dashedHop = L.polyline(
           [
@@ -551,13 +599,15 @@ function renderTrajectoryResult(trajData) {
             [c2.lat, c2.lon],
           ],
           {
-            color: "#ef4444",
+            color: "#ef4444", // Bright red indicating impossible hop / cloned plate anomaly
             weight: 3.5,
             dashArray: "8, 8",
             opacity: 0.95,
           }
         );
-        dashedHop.bindPopup(`<strong>Flagged Hop:</strong> ${h.implied_speed_kmh.toFixed(1)} km/h between ${h.previous_camera} and ${h.camera_id}`);
+        dashedHop.bindPopup(
+          `<strong>🚨 Cloned Plate Anomaly:</strong><br>Implied speed of ${Number(h.implied_speed_kmh || 0).toFixed(1)} km/h exceeds 120 km/h physical limit between ${fromCam} and ${toCam}.`
+        );
         trajHopsLayer.addLayer(dashedHop);
       }
     });

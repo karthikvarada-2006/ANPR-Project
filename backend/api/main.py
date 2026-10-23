@@ -4,6 +4,7 @@ Exposes RESTful endpoints and real-time WebSockets:
 - GET /api/health
 - GET /api/cameras
 - GET /api/trajectory/{plate}
+- GET /api/trajectory/{plate}/export
 - GET /api/plates/search
 - GET /api/analytics/summary
 - GET /api/analytics/flow-trend
@@ -22,7 +23,9 @@ from __future__ import annotations
 import asyncio
 import base64
 from contextlib import asynccontextmanager
+import csv
 import datetime
+import io
 import json
 import math
 from pathlib import Path
@@ -38,6 +41,7 @@ from fastapi import (
     File,
     HTTPException,
     Query,
+    Response,
     UploadFile,
     WebSocket,
     WebSocketDisconnect,
@@ -73,9 +77,11 @@ from backend.plate_utils import (
     CANONICAL_MAP,
     REVIEW_CONFIDENCE_THRESHOLD,
     compute_review_status,
+    escape_csv_cell,
     find_similar_plates,
     get_all_distinct_plates,
     normalize_plate,
+    sanitize_filename_plate,
 )
 from backend.trajectory import (
     get_camera_paths,
@@ -203,6 +209,13 @@ class FlaggedHop(BaseModel):
     distance_meters: float
     implied_speed_kmh: float
     reason: str
+    from_camera: Optional[str] = None
+    to_camera: Optional[str] = None
+    distance_km: Optional[float] = None
+    from_camera_name: Optional[str] = None
+    to_camera_name: Optional[str] = None
+    from_timestamp: Optional[str] = None
+    to_timestamp: Optional[str] = None
 
 
 class TripItem(BaseModel):
@@ -456,16 +469,39 @@ def get_vehicle_trajectory(
             trip_pts.append(pt)
             all_points.append(pt)
 
-        trip_flagged: List[FlaggedHop] = [
-            FlaggedHop(
-                previous_camera=str(h["previous_camera"]),
-                camera_id=str(h["camera_id"]),
-                time_delta_seconds=float(h["time_delta_seconds"]),
-                distance_meters=float(h["distance_meters"]),
-                implied_speed_kmh=float(h["implied_speed_kmh"]),
-                reason=str(h["reason"]),
+        def _parse_flagged_hop(h: Dict[str, Any]) -> FlaggedHop:
+            """Safely maps flagged hop dictionaries from trajectory reconstruction into FlaggedHop model.
+            Supports both 'from_camera' / 'previous_camera' and 'distance_km' / 'distance_meters'.
+            """
+            prev_cam = str(h.get("previous_camera") or h.get("from_camera") or "")
+            to_cam = str(h.get("camera_id") or h.get("to_camera") or "")
+            dt_sec = float(h.get("time_delta_seconds", 0.0))
+            if "distance_meters" in h and h["distance_meters"] is not None:
+                dist_m = float(h["distance_meters"])
+            elif "distance_km" in h and h["distance_km"] is not None:
+                dist_m = round(float(h["distance_km"]) * 1000.0, 1)
+            else:
+                dist_m = 0.0
+            spd = float(h.get("implied_speed_kmh", 0.0))
+            rsn = str(h.get("reason", "IMPOSSIBLE"))
+            return FlaggedHop(
+                previous_camera=prev_cam,
+                camera_id=to_cam,
+                from_camera=prev_cam,
+                to_camera=to_cam,
+                time_delta_seconds=dt_sec,
+                distance_meters=dist_m,
+                distance_km=round(dist_m / 1000.0, 3),
+                implied_speed_kmh=spd,
+                reason=rsn,
+                from_camera_name=h.get("from_camera_name"),
+                to_camera_name=h.get("to_camera_name"),
+                from_timestamp=h.get("from_timestamp"),
+                to_timestamp=h.get("to_timestamp"),
             )
-            for h in t.get("flagged_hops", [])
+
+        trip_flagged: List[FlaggedHop] = [
+            _parse_flagged_hop(h) for h in t.get("flagged_hops", [])
         ]
 
         trip_geom = t.get("route_geometry", [])
@@ -489,15 +525,7 @@ def get_vehicle_trajectory(
         )
 
     all_flagged: List[FlaggedHop] = [
-        FlaggedHop(
-            previous_camera=str(h["previous_camera"]),
-            camera_id=str(h["camera_id"]),
-            time_delta_seconds=float(h["time_delta_seconds"]),
-            distance_meters=float(h["distance_meters"]),
-            implied_speed_kmh=float(h["implied_speed_kmh"]),
-            reason=str(h["reason"]),
-        )
-        for h in traj.get("flagged_hops", [])
+        _parse_flagged_hop(h) for h in traj.get("flagged_hops", [])
     ]
 
     total_dist = sum(t.total_distance_km for t in trips_list)
@@ -513,6 +541,106 @@ def get_vehicle_trajectory(
         points=all_points,
         route_geometry=all_coords,
         flagged_hops=all_flagged,
+    )
+
+
+@app.get("/api/trajectory/{plate}/export", tags=["Trajectories"])
+def export_vehicle_journey_csv(
+    plate: str,
+    fuzzy: bool = Query(True, description="Enable OCR confusable plate variant searching"),
+    start: Optional[str] = Query(None, description="Start timestamp (YYYY-MM-DD HH:MM:SS)"),
+    end: Optional[str] = Query(None, description="End timestamp (YYYY-MM-DD HH:MM:SS)"),
+    source: Optional[str] = Query("sim", description="Event source filter: 'sim' (default), 'video', 'image', or 'all'"),
+    db: Session = Depends(get_db),
+):
+    """Export vehicle journey sightings as a downloadable CSV file.
+
+    Beginner-Friendly Explanation:
+    This endpoint reconstructs a vehicle's historic journey across ANPR cameras
+    by calling the exact same trajectory engine used by the interactive map.
+    It builds a time-ordered CSV containing each camera sighting, camera coordinates,
+    travel direction, and segment speed.
+    To prevent CSV Formula Injection attacks in spreadsheet programs (Excel, Google Sheets),
+    any text cell beginning with =, +, -, or @ is automatically escaped with an apostrophe.
+    """
+    safe_plate = sanitize_filename_plate(plate)
+    filename = f"journey_{safe_plate}.csv"
+
+    source_val = None if (source and source.lower() in ["all", "none", "any"]) else source
+    traj = get_trajectory(plate=plate, start=start, end=end, fuzzy=fuzzy, db=db, source=source_val)
+
+    # Fallback to any source if not found in sim
+    if traj["total_trips"] == 0 and source == "sim":
+        alt_traj = get_trajectory(plate=plate, start=start, end=end, fuzzy=fuzzy, db=db, source=None)
+        if alt_traj["total_trips"] > 0:
+            traj = alt_traj
+
+    if traj["total_trips"] == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Plate '{plate}' not found.",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    # Collect all sightings across trips in chronological order
+    all_points: List[Dict[str, Any]] = []
+    for t in traj.get("trips", []):
+        for p in t.get("points", []):
+            all_points.append(p)
+
+    # Strictly sort points by timestamp to ensure guaranteed chronological order
+    all_points.sort(key=lambda p: str(p.get("timestamp", "")))
+
+    output = io.StringIO()
+    writer = csv.writer(output, lineterminator="\n")
+
+    # Header row as requested in specification:
+    # queried plate, matched plate, point order (1..n), camera_id, camera name,
+    # latitude, longitude, timestamp, direction, and segment speed
+    headers = [
+        "queried_plate",
+        "matched_plate",
+        "point_order",
+        "camera_id",
+        "camera_name",
+        "latitude",
+        "longitude",
+        "timestamp",
+        "direction",
+        "segment_speed",
+    ]
+    writer.writerow(headers)
+
+    # Write data rows
+    for idx, p in enumerate(all_points, start=1):
+        ts = p.get("timestamp")
+        ts_str = ts.isoformat() if hasattr(ts, "isoformat") else str(ts) if ts is not None else ""
+        matched_plate = p.get("plate_read") or traj.get("plate") or plate
+        direction = p.get("compass", "")
+        segment_spd = p.get("speed_kmh", "") if p.get("speed_kmh") is not None else ""
+
+        row = [
+            escape_csv_cell(plate),
+            escape_csv_cell(matched_plate),
+            idx,
+            escape_csv_cell(p.get("camera_id", "")),
+            escape_csv_cell(p.get("name", "")),
+            p.get("lat", 0.0),
+            p.get("lon", 0.0),
+            escape_csv_cell(ts_str),
+            escape_csv_cell(direction),
+            segment_spd,
+        ]
+        writer.writerow(row)
+
+    csv_data = output.getvalue()
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Type": "text/csv; charset=utf-8",
+        },
     )
 
 
