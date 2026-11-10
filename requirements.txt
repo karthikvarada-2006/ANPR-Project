@@ -24,3 +24,4 @@ lap>=0.5.12
 torch==2.14.1
 torchvision==0.29.1
 python-multipart
+imageio-ffmpeg

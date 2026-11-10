@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.pytest_cache/
+counting_outputs/
+counting_work/
+scratch/
+tests/
+runs/
+report/
+.env
+.cloudflared*
+cloudflared*
+
