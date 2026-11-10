@@ -1,0 +1,6 @@
+plate,anomaly_type,camera_id_1,timestamp_1,camera_id_2,timestamp_2,distance_meters,time_delta_seconds,implied_speed_kmh,description
+DL03NV2244,cloned_plate,CAM_008,2026-10-01 10:37:10,CAM_028,2026-10-01 10:38:12,4790.3,62,278.1,Plate DL03NV2244 seen at CAM_008 and CAM_028 (4790m apart) within 62s -> impossible speed 278.1 km/h.
+KA53AE1276,cloned_plate,CAM_002,2026-10-01 11:39:17,CAM_036,2026-10-01 11:40:09,3748.8,52,259.5,Plate KA53AE1276 seen at CAM_002 and CAM_036 (3749m apart) within 52s -> impossible speed 259.5 km/h.
+KA02SJ7165,cloned_plate,CAM_002,2026-10-01 12:24:24,CAM_037,2026-10-01 12:25:27,4356.1,63,248.9,Plate KA02SJ7165 seen at CAM_002 and CAM_037 (4356m apart) within 63s -> impossible speed 248.9 km/h.
+DL08FF1351,cloned_plate,CAM_010,2026-10-01 13:27:22,CAM_023,2026-10-01 13:28:50,4490.3,88,183.7,Plate DL08FF1351 seen at CAM_010 and CAM_023 (4490m apart) within 88s -> impossible speed 183.7 km/h.
+MH03FD3865,cloned_plate,CAM_030,2026-10-01 14:24:21,CAM_040,2026-10-01 14:25:26,3821.1,65,211.6,Plate MH03FD3865 seen at CAM_030 and CAM_040 (3821m apart) within 65s -> impossible speed 211.6 km/h.

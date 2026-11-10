@@ -26,6 +26,17 @@ runs/
 *.graphml
 cache/
 
+# Whitelist critical production database and simulation assets for cloud deployment
+!data/city_anpr.db
+!data/sim/city.graphml
+!data/sim/camera_paths.pkl
+!data/sim/events.csv
+!data/sim/cameras.csv
+!data/sim/blacklist.csv
+!data/sim/anomalies.csv
+!data/sim/sample_trajectories.geojson
+!data/sim/ground_truth_events.csv
+
 # Python bytecode & cache
 __pycache__/
 *.py[cod]
