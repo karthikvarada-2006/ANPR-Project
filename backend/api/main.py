@@ -130,17 +130,8 @@ def get_plate_reader() -> PlateReader:
 # ==============================================================================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Warm up road graph, camera paths cache, surveillance rule context, and PlateReader on startup."""
-    print("Warming up ANPR system caches (road graph, camera paths, rule context, PlateReader)...")
-    try:
-        get_road_graph()
-        get_cameras_info()
-        get_camera_paths()
-        RuleContext.get_instance()
-        get_plate_reader()
-        print("  [OK] Graph, camera paths, rule context, and PlateReader loaded once at startup.")
-    except Exception as exc:
-        print(f"  [WARNING] Cache warmup warning: {exc}")
+    """FastAPI lifespan handler with on-demand lazy loading to stay within cloud memory limits."""
+    print("FastAPI ANPR application started successfully (on-demand loading enabled).")
     yield
     print("FastAPI ANPR application shutdown complete.")
 
